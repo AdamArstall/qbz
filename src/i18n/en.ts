@@ -213,6 +213,10 @@ export const en = {
       flatpak: 'flatpak install --user ./qbz.flatpak',
       tarball: 'tar -xzf qbz.tar.gz && ./qbz',
     },
+    glibcNote: {
+      deb: 'Requires glibc 2.38+ (Ubuntu 24.04+, Debian 13+, Mint 22+). Older distros? Use Flatpak, Snap, or AppImage.',
+      rpm: 'Requires glibc 2.38+ (Fedora 39+, openSUSE Tumbleweed). Older distros? Use Flatpak, Snap, or AppImage.',
+    },
     buildTitle: 'Build from source (advanced)',
     buildBody: 'QBZ targets Linux. macOS builds may work, but features like PipeWire, casting, and device control can be incomplete or unstable.',
     buildInstructions: {

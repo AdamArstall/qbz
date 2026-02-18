@@ -991,6 +991,13 @@ p {
   margin-top: 0;
 }
 
+.glibc-note {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  margin: 4px 0 0;
+  line-height: 1.4;
+}
+
 .copy-btn {
   background: transparent;
   border: none;

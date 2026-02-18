@@ -55,6 +55,7 @@ type DownloadItem = {
   depsCmd?: string
   helperCmds?: { label: string; cmds: string[] }
   helperNote?: { label: string; note: string }
+  glibcNote?: string
 }
 
 const RELEASES_URL = 'https://api.github.com/repos/vicrodh/qbz/releases'
@@ -176,6 +177,7 @@ const mapAssets = (assets: ReleaseAsset[]): DownloadItem[] =>
           label: 'Audiophile Setup (Bit-Perfect Audio)',
           note: 'After install, open QBZ → Settings → Audio and select "ALSA Direct" as Audio Backend. Note: PipeWire bit-perfect is unavailable in Flatpak due to sandbox restrictions.'
         } : undefined,
+        glibcNote: (type === 'deb' || type === 'rpm') ? t(`downloads.glibcNote.${type}`) : undefined,
       }
     })
     .filter((item) => !DISABLED_TYPES.includes(item.type))
@@ -329,6 +331,9 @@ export function DownloadSection() {
                         </code>
                         <CopyButton text={item.installCmd} />
                       </div>
+                    )}
+                    {item.glibcNote && (
+                      <p className="glibc-note">{item.glibcNote}</p>
                     )}
                     {item.depsCmd && (
                       <details className="deps-details">
