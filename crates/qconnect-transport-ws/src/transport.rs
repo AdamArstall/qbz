@@ -594,13 +594,23 @@ fn handle_incoming_binary(
                 },
             );
 
-            if let Ok(events) = decode_queue_server_events(&inner_payload) {
+            // The server wraps QConnectMessages inside an inner envelope with:
+            //   field 1 (fixed64): correlation ID
+            //   field 2 (varint): sequence number
+            //   field 3 (bytes): the actual QConnectMessage protobuf
+            // We must unwrap field 3 before passing to the decoders.
+            let qconnect_bytes = match QCloudInnerEnvelope::decode(inner_payload.as_slice()) {
+                Ok(envelope) => envelope.message.unwrap_or_default(),
+                Err(_) => inner_payload,
+            };
+
+            if let Ok(events) = decode_queue_server_events(&qconnect_bytes) {
                 for event in events {
                     emit(events_tx, TransportEvent::InboundQueueServerEvent(event));
                 }
             }
 
-            if let Ok(commands) = decode_renderer_server_commands(&inner_payload) {
+            if let Ok(commands) = decode_renderer_server_commands(&qconnect_bytes) {
                 for command in commands {
                     emit(
                         events_tx,
@@ -609,7 +619,7 @@ fn handle_incoming_binary(
                 }
             }
 
-            if let Ok(inbound) = decode_inbound_json(&inner_payload) {
+            if let Ok(inbound) = decode_inbound_json(&qconnect_bytes) {
                 emit(events_tx, TransportEvent::InboundReceived(inbound));
             }
         }
@@ -790,6 +800,18 @@ struct CloudPayload {
     pub dests: Vec<Vec<u8>>,
     #[prost(bytes = "vec", optional, tag = "7")]
     pub payload: Option<Vec<u8>>,
+}
+
+/// Inner envelope that wraps QConnectMessage inside CloudPayload.payload.
+/// The server sends: CloudPayload { payload: QCloudInnerEnvelope { message: QConnectMessage } }
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct QCloudInnerEnvelope {
+    #[prost(fixed64, optional, tag = "1")]
+    pub correlation_id: Option<u64>,
+    #[prost(uint64, optional, tag = "2")]
+    pub sequence: Option<u64>,
+    #[prost(bytes = "vec", optional, tag = "3")]
+    pub message: Option<Vec<u8>>,
 }
 
 #[cfg(test)]

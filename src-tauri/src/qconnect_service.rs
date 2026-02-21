@@ -410,9 +410,23 @@ impl QconnectServiceState {
 
         let event_loop = tauri::async_runtime::spawn(async move {
             log::info!("[QConnect/EventLoop] Started listening for transport events");
+            let mut renderer_joined = false;
             loop {
                 match transport_rx.recv().await {
                     Ok(event) => {
+                        // Check for SESSION_STATE to trigger deferred renderer join
+                        if !renderer_joined {
+                            if let qconnect_transport_ws::TransportEvent::InboundQueueServerEvent(ref evt) = event {
+                                if evt.message_type() == "MESSAGE_TYPE_SRVR_CTRL_SESSION_STATE" {
+                                    if let Some(session_uuid) = evt.payload.get("session_uuid").and_then(|v| v.as_str()) {
+                                        renderer_joined = true;
+                                        deferred_renderer_join(&app_for_loop, session_uuid).await;
+                                    } else {
+                                        log::warn!("[QConnect] SESSION_STATE received but no session_uuid in payload: {}", evt.payload);
+                                    }
+                                }
+                            }
+                        }
                         match &event {
                             qconnect_transport_ws::TransportEvent::Connected => {
                                 log::info!("[QConnect/Transport] WebSocket connected");
@@ -948,12 +962,62 @@ async fn bootstrap_remote_presence(
     app: &Arc<QconnectApp<NativeWsTransport, TauriQconnectEventSink>>,
 ) -> Result<(), String> {
     let device_info = default_qconnect_device_info();
+
+    // 1. Controller JoinSession first (works without session_uuid).
+    //    The server will respond with session topology (AddRenderer, QueueState, etc.).
+    let join_payload = serde_json::to_value(QconnectJoinSessionRequest {
+        session_uuid: None,
+        device_info: Some(device_info),
+    })
+    .map_err(|err| format!("serialize join_session bootstrap payload: {err}"))?;
+
+    let join_command = app
+        .build_queue_command(QueueCommandType::CtrlSrvrJoinSession, join_payload)
+        .await;
+    let join_action_uuid = app
+        .send_queue_command(join_command)
+        .await
+        .map_err(|err| format!("send bootstrap ctrl_srvr_join_session failed: {err}"))?;
+
+    // JoinSession typically responds with session/renderer controller events that are not part of
+    // queue reducer correlation. Drop pending slot so queue operations are not blocked for 10s.
+    clear_pending_if_matches(app, &join_action_uuid).await;
+
+    // 2. Ask for current queue state from server
+    let ask_queue_payload = serde_json::json!({});
+    let ask_queue_command = app
+        .build_queue_command(QueueCommandType::CtrlSrvrAskForQueueState, ask_queue_payload)
+        .await;
+    let ask_action_uuid = app
+        .send_queue_command(ask_queue_command)
+        .await
+        .map_err(|err| format!("send bootstrap ask_for_queue_state failed: {err}"))?;
+    clear_pending_if_matches(app, &ask_action_uuid).await;
+
+    // NOTE: Renderer JoinSession requires a session_uuid from the server (type 81 SESSION_STATE).
+    // It is sent as a deferred step from the event loop when SESSION_STATE arrives.
+    log::info!("[QConnect] Bootstrap complete: controller joined, queue state requested. Renderer join deferred until session_uuid received.");
+
+    Ok(())
+}
+
+/// Deferred renderer join: called from the event loop when we receive SESSION_STATE with a session_uuid.
+async fn deferred_renderer_join(
+    app: &Arc<QconnectApp<NativeWsTransport, TauriQconnectEventSink>>,
+    session_uuid: &str,
+) {
+    let device_info = default_qconnect_device_info();
     let queue_version_ref = app.queue_state_snapshot().await.version;
 
-    // 1. Renderer JoinSession with is_active=true, initial state, and capabilities
+    log::info!(
+        "[QConnect] Deferred renderer join with session_uuid={}",
+        session_uuid
+    );
+
+    // 1. Renderer JoinSession with session_uuid
     let renderer_join_payload = serde_json::json!({
-        "device_info": serde_json::to_value(&device_info)
-            .map_err(|err| format!("serialize device_info: {err}"))?,
+        "session_uuid": session_uuid,
+        "device_info": serde_json::to_value(&device_info).unwrap_or_default(),
         "is_active": true,
         "reason": JOIN_SESSION_REASON_CONTROLLER_REQUEST,
         "initial_state": {
@@ -973,11 +1037,12 @@ async fn bootstrap_remote_presence(
         queue_version_ref,
         renderer_join_payload,
     );
-    app.send_renderer_report_command(renderer_join_report)
-        .await
-        .map_err(|err| format!("send bootstrap rndr_srvr_join_session failed: {err}"))?;
+    if let Err(err) = app.send_renderer_report_command(renderer_join_report).await {
+        log::error!("[QConnect] Deferred renderer join failed: {err}");
+        return;
+    }
 
-    // 2. Send initial StateUpdated report so other devices see our state
+    // 2. Send initial StateUpdated report
     let state_report_payload = serde_json::json!({
         "playing_state": PLAYING_STATE_STOPPED,
         "buffer_state": BUFFER_STATE_OK,
@@ -994,9 +1059,9 @@ async fn bootstrap_remote_presence(
         queue_version_ref,
         state_report_payload,
     );
-    app.send_renderer_report_command(state_report)
-        .await
-        .map_err(|err| format!("send bootstrap rndr_srvr_state_updated failed: {err}"))?;
+    if let Err(err) = app.send_renderer_report_command(state_report).await {
+        log::error!("[QConnect] Deferred renderer state report failed: {err}");
+    }
 
     // 3. Report volume and max audio quality
     let volume_report = RendererReport::new(
@@ -1005,9 +1070,9 @@ async fn bootstrap_remote_presence(
         queue_version_ref,
         serde_json::json!({ "volume": 100 }),
     );
-    app.send_renderer_report_command(volume_report)
-        .await
-        .map_err(|err| format!("send bootstrap rndr_srvr_volume_changed failed: {err}"))?;
+    if let Err(err) = app.send_renderer_report_command(volume_report).await {
+        log::error!("[QConnect] Deferred renderer volume report failed: {err}");
+    }
 
     let max_quality_report = RendererReport::new(
         RendererReportType::RndrSrvrMaxAudioQualityChanged,
@@ -1015,43 +1080,11 @@ async fn bootstrap_remote_presence(
         queue_version_ref,
         serde_json::json!({ "max_audio_quality": AUDIO_QUALITY_HIRES_LEVEL2 }),
     );
-    app.send_renderer_report_command(max_quality_report)
-        .await
-        .map_err(|err| format!("send bootstrap rndr_srvr_max_audio_quality_changed failed: {err}"))?;
+    if let Err(err) = app.send_renderer_report_command(max_quality_report).await {
+        log::error!("[QConnect] Deferred renderer max quality report failed: {err}");
+    }
 
-    // 4. Controller JoinSession to also participate as controller
-    let join_payload = serde_json::to_value(QconnectJoinSessionRequest {
-        session_uuid: None,
-        device_info: Some(device_info),
-    })
-    .map_err(|err| format!("serialize join_session bootstrap payload: {err}"))?;
-
-    let join_command = app
-        .build_queue_command(QueueCommandType::CtrlSrvrJoinSession, join_payload)
-        .await;
-    let join_action_uuid = app
-        .send_queue_command(join_command)
-        .await
-        .map_err(|err| format!("send bootstrap ctrl_srvr_join_session failed: {err}"))?;
-
-    // JoinSession typically responds with session/renderer controller events that are not part of
-    // queue reducer correlation. Drop pending slot so queue operations are not blocked for 10s.
-    clear_pending_if_matches(app, &join_action_uuid).await;
-
-    // 5. Ask for current queue state from server
-    let ask_queue_payload = serde_json::json!({});
-    let ask_queue_command = app
-        .build_queue_command(QueueCommandType::CtrlSrvrAskForQueueState, ask_queue_payload)
-        .await;
-    let ask_action_uuid = app
-        .send_queue_command(ask_queue_command)
-        .await
-        .map_err(|err| format!("send bootstrap ask_for_queue_state failed: {err}"))?;
-    clear_pending_if_matches(app, &ask_action_uuid).await;
-
-    log::info!("[QConnect] Bootstrap complete: renderer joined with is_active=true, initial state reported, controller joined, queue state requested");
-
-    Ok(())
+    log::info!("[QConnect] Deferred renderer join complete for session {session_uuid}");
 }
 
 async fn clear_pending_if_matches(
