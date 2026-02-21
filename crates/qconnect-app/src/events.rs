@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use qconnect_core::{QConnectQueueState, QConnectRendererState};
+use qconnect_core::{QConnectQueueState, QConnectRendererState, RendererCommand};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -8,6 +8,10 @@ pub enum QconnectAppEvent {
     TransportDisconnected,
     QueueUpdated(QConnectQueueState),
     RendererUpdated(QConnectRendererState),
+    RendererCommandApplied {
+        command: RendererCommand,
+        state: QConnectRendererState,
+    },
     PendingActionStarted {
         uuid: String,
     },

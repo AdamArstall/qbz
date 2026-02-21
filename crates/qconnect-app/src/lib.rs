@@ -15,4 +15,5 @@ pub use feature_flags::{
     QBZ_QCONNECT_PANEL_SWITCH, QBZ_QCONNECT_QUEUE_MODEL, QBZ_QCONNECT_STRICT_DOMAIN_ISOLATION,
     QBZ_QCONNECT_TRANSPORT,
 };
+pub use qconnect_core::{QConnectRendererState, RendererCommand};
 pub use state::QconnectRuntimeState;

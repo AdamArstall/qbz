@@ -8,8 +8,10 @@ use qconnect_core::{
     QConnectQueueState, QConnectRendererState, QueueEvent, QueueItem, RendererCommand,
 };
 use qconnect_protocol::{
-    build_qconnect_outbound_envelope, parse_inbound_event, InboundEnvelope, QueueCommand,
-    QueueCommandType, QueueEventType, QueueServerEvent, RendererCommandType, RendererServerCommand,
+    build_qconnect_outbound_envelope, build_qconnect_renderer_outbound_envelope,
+    parse_inbound_event, InboundEnvelope, QueueCommand, QueueCommandType, QueueEventType,
+    QueueServerEvent, RendererCommandType, RendererReport, RendererReportType,
+    RendererServerCommand,
 };
 use qconnect_transport_ws::{TransportEvent, WsTransport, WsTransportConfig};
 use serde_json::Value;
@@ -176,7 +178,7 @@ where
                 self.apply_server_event(event).await?;
             }
             TransportEvent::InboundRendererServerCommand(command) => {
-                self.apply_renderer_server_command(command).await;
+                self.apply_renderer_server_command(command).await?;
             }
             TransportEvent::Authenticated
             | TransportEvent::Subscribed
@@ -276,20 +278,34 @@ where
         Ok(())
     }
 
-    async fn apply_renderer_server_command(&self, command: RendererServerCommand) {
+    async fn apply_renderer_server_command(
+        &self,
+        command: RendererServerCommand,
+    ) -> Result<(), QconnectAppError> {
         let Some(renderer_command) = map_renderer_server_command(&command) else {
-            return;
+            return Ok(());
         };
 
-        let snapshot = {
+        let (snapshot, queue_version) = {
             let mut state = self.state.lock().await;
             apply_renderer_command(&mut state.renderer, &renderer_command, now_ms());
-            state.renderer.clone()
+            (state.renderer.clone(), state.queue.version)
         };
 
         self.sink
-            .on_event(QconnectAppEvent::RendererUpdated(snapshot))
+            .on_event(QconnectAppEvent::RendererUpdated(snapshot.clone()))
             .await;
+
+        self.sink
+            .on_event(QconnectAppEvent::RendererCommandApplied {
+                command: renderer_command.clone(),
+                state: snapshot.clone(),
+            })
+            .await;
+
+        self.send_renderer_reports(&renderer_command, &snapshot, queue_version)
+            .await?;
+        Ok(())
     }
 
     fn spawn_pending_timeout_watch(&self, action_uuid: String) {
@@ -363,6 +379,92 @@ where
 
     fn next_action_uuid(&self) -> String {
         Uuid::new_v4().to_string()
+    }
+
+    async fn send_renderer_reports(
+        &self,
+        command: &RendererCommand,
+        renderer: &QConnectRendererState,
+        queue_version_ref: qconnect_core::QueueVersion,
+    ) -> Result<(), QconnectAppError> {
+        match command {
+            RendererCommand::SetState { .. } => {
+                let report = RendererReport::new(
+                    RendererReportType::RndrSrvrStateUpdated,
+                    self.next_action_uuid(),
+                    queue_version_ref,
+                    serde_json::json!({
+                        "playing_state": renderer.playing_state,
+                        "buffer_state": infer_buffer_state(renderer.playing_state),
+                        "current_position": renderer.current_position_ms,
+                        "duration": Option::<u64>::None,
+                        "queue_version": {
+                            "major": queue_version_ref.major,
+                            "minor": queue_version_ref.minor
+                        },
+                        "current_queue_item_id": renderer.current_track.as_ref().map(|item| item.queue_item_id),
+                        "next_queue_item_id": renderer.next_track.as_ref().map(|item| item.queue_item_id)
+                    }),
+                );
+                self.send_renderer_report(report).await?;
+            }
+            RendererCommand::SetVolume { volume, .. } => {
+                let resolved_volume = renderer.volume.or(*volume);
+                if let Some(resolved_volume) = resolved_volume {
+                    let report = RendererReport::new(
+                        RendererReportType::RndrSrvrVolumeChanged,
+                        self.next_action_uuid(),
+                        queue_version_ref,
+                        serde_json::json!({
+                            "volume": resolved_volume
+                        }),
+                    );
+                    self.send_renderer_report(report).await?;
+                }
+            }
+            RendererCommand::MuteVolume { value } => {
+                let report = RendererReport::new(
+                    RendererReportType::RndrSrvrVolumeMuted,
+                    self.next_action_uuid(),
+                    queue_version_ref,
+                    serde_json::json!({
+                        "value": value
+                    }),
+                );
+                self.send_renderer_report(report).await?;
+            }
+            RendererCommand::SetMaxAudioQuality { max_audio_quality } => {
+                let report = RendererReport::new(
+                    RendererReportType::RndrSrvrMaxAudioQualityChanged,
+                    self.next_action_uuid(),
+                    queue_version_ref,
+                    serde_json::json!({
+                        "max_audio_quality": max_audio_quality
+                    }),
+                );
+                self.send_renderer_report(report).await?;
+            }
+            RendererCommand::SetActive { .. }
+            | RendererCommand::SetLoopMode { .. }
+            | RendererCommand::SetShuffleMode { .. } => {}
+        }
+
+        Ok(())
+    }
+
+    async fn send_renderer_report(&self, report: RendererReport) -> Result<(), QconnectAppError> {
+        let envelope = build_qconnect_renderer_outbound_envelope(report)?;
+        self.transport.send(envelope).await?;
+        Ok(())
+    }
+}
+
+fn infer_buffer_state(playing_state: Option<i32>) -> Option<i32> {
+    match playing_state {
+        Some(2) | Some(3) => Some(2),
+        Some(1) => Some(1),
+        Some(value) => Some(value),
+        None => None,
     }
 }
 
@@ -811,7 +913,7 @@ mod tests {
 
     #[tokio::test]
     async fn inbound_renderer_command_updates_renderer_state() {
-        let (app, sink, _, _events_rx) = build_connected_app().await;
+        let (app, sink, transport, _events_rx) = build_connected_app().await;
 
         app.apply_renderer_server_command(RendererServerCommand {
             command_type: RendererCommandType::SrvrRndrSetState,
@@ -825,7 +927,8 @@ mod tests {
                 }
             }),
         })
-        .await;
+        .await
+        .expect("apply set-state command");
 
         app.apply_renderer_server_command(RendererServerCommand {
             command_type: RendererCommandType::SrvrRndrSetVolume,
@@ -834,7 +937,8 @@ mod tests {
                 "volume_delta": 3
             }),
         })
-        .await;
+        .await
+        .expect("apply set-volume command");
 
         let renderer = app.renderer_state_snapshot().await;
         assert_eq!(renderer.playing_state, Some(2));
@@ -857,5 +961,16 @@ mod tests {
                 .count()
                 >= 2
         );
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, QconnectAppEvent::RendererCommandApplied { .. })));
+
+        let sent = transport.sent_messages().await;
+        assert!(sent
+            .iter()
+            .any(|msg| msg.message_type == "MESSAGE_TYPE_RNDR_SRVR_STATE_UPDATED"));
+        assert!(sent
+            .iter()
+            .any(|msg| msg.message_type == "MESSAGE_TYPE_RNDR_SRVR_VOLUME_CHANGED"));
     }
 }
