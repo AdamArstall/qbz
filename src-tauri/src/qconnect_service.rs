@@ -409,23 +409,53 @@ impl QconnectServiceState {
         let app_for_errors = app_handle.clone();
 
         let event_loop = tauri::async_runtime::spawn(async move {
+            log::info!("[QConnect/EventLoop] Started listening for transport events");
             loop {
                 match transport_rx.recv().await {
                     Ok(event) => {
                         match &event {
+                            qconnect_transport_ws::TransportEvent::Connected => {
+                                log::info!("[QConnect/Transport] WebSocket connected");
+                            }
+                            qconnect_transport_ws::TransportEvent::Disconnected => {
+                                log::warn!("[QConnect/Transport] WebSocket disconnected");
+                            }
+                            qconnect_transport_ws::TransportEvent::Authenticated => {
+                                log::info!("[QConnect/Transport] Authenticated with JWT");
+                            }
+                            qconnect_transport_ws::TransportEvent::Subscribed => {
+                                log::info!("[QConnect/Transport] Subscribed to channels");
+                            }
+                            qconnect_transport_ws::TransportEvent::KeepalivePingSent => {
+                                log::debug!("[QConnect/Transport] Keepalive ping sent");
+                            }
+                            qconnect_transport_ws::TransportEvent::KeepalivePongReceived => {
+                                log::debug!("[QConnect/Transport] Keepalive pong received");
+                            }
+                            qconnect_transport_ws::TransportEvent::ReconnectScheduled { attempt, backoff_ms, reason } => {
+                                log::warn!("[QConnect/Transport] Reconnect scheduled: attempt={} backoff={}ms reason={}", attempt, backoff_ms, reason);
+                            }
                             qconnect_transport_ws::TransportEvent::InboundQueueServerEvent(evt) => {
-                                log::info!("[QConnect] <-- Inbound queue event: {}", evt.message_type());
+                                log::info!("[QConnect] <-- Inbound queue event: {} payload={}", evt.message_type(), evt.payload);
                             }
                             qconnect_transport_ws::TransportEvent::InboundRendererServerCommand(cmd) => {
                                 log::info!("[QConnect] <-- Inbound renderer command: {} payload={}", cmd.message_type(), cmd.payload);
                             }
                             qconnect_transport_ws::TransportEvent::InboundFrameDecoded { cloud_message_type, payload_size } => {
-                                log::debug!("[QConnect] <-- Frame decoded: type={} size={}", cloud_message_type, payload_size);
+                                log::info!("[QConnect/Transport] <-- Frame decoded: cloud_type={} size={}", cloud_message_type, payload_size);
+                            }
+                            qconnect_transport_ws::TransportEvent::InboundPayloadBytes { cloud_message_type, payload } => {
+                                log::info!("[QConnect/Transport] <-- Payload bytes: cloud_type={} len={} hex={}", cloud_message_type, payload.len(), hex_preview(payload, 64));
+                            }
+                            qconnect_transport_ws::TransportEvent::OutboundSent { message_type, action_uuid } => {
+                                log::info!("[QConnect/Transport] --> Outbound sent: {} uuid={}", message_type, action_uuid);
                             }
                             qconnect_transport_ws::TransportEvent::TransportError { stage, message } => {
-                                log::error!("[QConnect] Transport error: stage={} message={}", stage, message);
+                                log::error!("[QConnect/Transport] Error: stage={} message={}", stage, message);
                             }
-                            _ => {}
+                            qconnect_transport_ws::TransportEvent::InboundReceived(envelope) => {
+                                log::info!("[QConnect/Transport] <-- InboundReceived (JSON envelope)");
+                            }
                         }
                         if let Err(err) = app_for_loop.handle_transport_event(event).await {
                             let message = format!("qconnect app transport handling error: {err}");
@@ -437,10 +467,12 @@ impl QconnectServiceState {
                         log::warn!("[QConnect] Transport event lagged by {skipped} messages");
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        log::warn!("[QConnect/EventLoop] Transport channel closed, stopping");
                         break;
                     }
                 }
             }
+            log::info!("[QConnect/EventLoop] Stopped");
         });
 
         let runtime = QconnectRuntime {
@@ -1554,6 +1586,20 @@ async fn fetch_qconnect_transport_credentials(
     }
 
     Ok((endpoint_url, jwt_qws))
+}
+
+fn hex_preview(data: &[u8], max_bytes: usize) -> String {
+    let take = data.len().min(max_bytes);
+    let hex: String = data[..take]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<Vec<_>>()
+        .join("");
+    if data.len() > max_bytes {
+        format!("{hex}...({}B total)", data.len())
+    } else {
+        hex
+    }
 }
 
 fn normalize_opt_string(value: Option<String>) -> Option<String> {
