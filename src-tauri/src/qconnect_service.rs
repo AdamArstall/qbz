@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use qconnect_app::{
     evaluate_remote_queue_admission, resolve_handoff_intent, HandoffIntent, QConnectQueueState,
     QConnectRendererState, QconnectApp, QconnectAppEvent, QconnectEventSink, QueueCommandType,
-    RendererCommand, TrackOrigin,
+    RendererCommand, RendererReport, RendererReportType, TrackOrigin,
 };
 use qconnect_transport_ws::{NativeWsTransport, WsTransportConfig};
 use serde::{Deserialize, Serialize};
@@ -538,9 +538,27 @@ fn normalize_volume_to_fraction(volume: i32) -> f32 {
 async fn bootstrap_remote_presence(
     app: &Arc<QconnectApp<NativeWsTransport, TauriQconnectEventSink>>,
 ) -> Result<(), String> {
+    let device_info = default_qconnect_device_info();
+    let queue_version_ref = app.queue_state_snapshot().await.version;
+
+    let renderer_join_payload = serde_json::to_value(QconnectJoinSessionRequest {
+        session_uuid: None,
+        device_info: Some(device_info.clone()),
+    })
+    .map_err(|err| format!("serialize renderer join_session bootstrap payload: {err}"))?;
+    let renderer_join_report = RendererReport::new(
+        RendererReportType::RndrSrvrJoinSession,
+        Uuid::new_v4().to_string(),
+        queue_version_ref,
+        renderer_join_payload,
+    );
+    app.send_renderer_report_command(renderer_join_report)
+        .await
+        .map_err(|err| format!("send bootstrap rndr_srvr_join_session failed: {err}"))?;
+
     let join_payload = serde_json::to_value(QconnectJoinSessionRequest {
         session_uuid: None,
-        device_info: Some(default_qconnect_device_info()),
+        device_info: Some(device_info),
     })
     .map_err(|err| format!("serialize join_session bootstrap payload: {err}"))?;
 
@@ -555,16 +573,6 @@ async fn bootstrap_remote_presence(
     // JoinSession typically responds with session/renderer controller events that are not part of
     // queue reducer correlation. Drop pending slot so queue operations are not blocked for 10s.
     clear_pending_if_matches(app, &join_action_uuid).await;
-
-    let ask_queue_command = app
-        .build_queue_command(
-            QueueCommandType::CtrlSrvrAskForQueueState,
-            Value::Object(Default::default()),
-        )
-        .await;
-    app.send_queue_command(ask_queue_command)
-        .await
-        .map_err(|err| format!("send bootstrap ask_for_queue_state failed: {err}"))?;
 
     Ok(())
 }

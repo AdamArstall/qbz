@@ -390,6 +390,19 @@ fn map_queue_command(command: &QueueCommand) -> Result<QConnectMessage, Protocol
 
 fn map_renderer_report(report: &RendererReport) -> Result<QConnectMessage, ProtocolError> {
     match report.report_type {
+        RendererReportType::RndrSrvrJoinSession => Ok(QConnectMessage {
+            message_type: Some(QConnectMessageType::MessageTypeRndrSrvrJoinSession as i32),
+            rndr_srvr_join_session: Some(JoinSessionMessage {
+                session_uuid: optional_uuid_bytes(&report.payload, &["session_uuid", "sessionUuid"])?,
+                device_info: parse_device_info(&report.payload)?,
+            }),
+            ..Default::default()
+        }),
+        RendererReportType::RndrSrvrDeviceInfoUpdated => Ok(QConnectMessage {
+            message_type: Some(QConnectMessageType::MessageTypeRndrSrvrDeviceInfoUpdated as i32),
+            rndr_srvr_device_info_updated: parse_device_info(&report.payload)?,
+            ..Default::default()
+        }),
         RendererReportType::RndrSrvrStateUpdated => {
             let queue_version = optional_queue_version(&report.payload, "queue_version")?
                 .unwrap_or(report.queue_version_ref);

@@ -147,6 +147,13 @@ where
         Ok(action_uuid)
     }
 
+    pub async fn send_renderer_report_command(
+        &self,
+        report: RendererReport,
+    ) -> Result<(), QconnectAppError> {
+        self.send_renderer_report(report).await
+    }
+
     pub async fn handle_transport_event(
         &self,
         event: TransportEvent,

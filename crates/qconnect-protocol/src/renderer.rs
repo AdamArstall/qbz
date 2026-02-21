@@ -42,6 +42,8 @@ impl RendererServerCommand {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RendererReportType {
+    RndrSrvrJoinSession,
+    RndrSrvrDeviceInfoUpdated,
     RndrSrvrStateUpdated,
     RndrSrvrVolumeChanged,
     RndrSrvrVolumeMuted,
@@ -52,6 +54,8 @@ pub enum RendererReportType {
 impl RendererReportType {
     pub const fn as_message_type(self) -> &'static str {
         match self {
+            Self::RndrSrvrJoinSession => "MESSAGE_TYPE_RNDR_SRVR_JOIN_SESSION",
+            Self::RndrSrvrDeviceInfoUpdated => "MESSAGE_TYPE_RNDR_SRVR_DEVICE_INFO_UPDATED",
             Self::RndrSrvrStateUpdated => "MESSAGE_TYPE_RNDR_SRVR_STATE_UPDATED",
             Self::RndrSrvrVolumeChanged => "MESSAGE_TYPE_RNDR_SRVR_VOLUME_CHANGED",
             Self::RndrSrvrVolumeMuted => "MESSAGE_TYPE_RNDR_SRVR_VOLUME_MUTED",

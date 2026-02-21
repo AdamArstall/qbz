@@ -702,6 +702,10 @@ pub struct QConnectMessages {
 pub struct QConnectMessage {
     #[prost(int32, optional, tag = "1")]
     pub message_type: Option<i32>,
+    #[prost(message, optional, tag = "21")]
+    pub rndr_srvr_join_session: Option<JoinSessionMessage>,
+    #[prost(message, optional, tag = "22")]
+    pub rndr_srvr_device_info_updated: Option<DeviceInfoMessage>,
     #[prost(message, optional, tag = "23")]
     pub rndr_srvr_state_updated: Option<RendererStateUpdatedMessage>,
     #[prost(message, optional, tag = "25")]
