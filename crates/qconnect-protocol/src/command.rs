@@ -4,6 +4,14 @@ use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QueueCommandType {
+    CtrlSrvrJoinSession,
+    CtrlSrvrSetPlayerState,
+    CtrlSrvrSetActiveRenderer,
+    CtrlSrvrSetVolume,
+    CtrlSrvrSetLoopMode,
+    CtrlSrvrMuteVolume,
+    CtrlSrvrSetMaxAudioQuality,
+    CtrlSrvrAskForRendererState,
     CtrlSrvrQueueAddTracks,
     CtrlSrvrQueueLoadTracks,
     CtrlSrvrQueueInsertTracks,
@@ -21,6 +29,14 @@ pub enum QueueCommandType {
 impl QueueCommandType {
     pub const fn as_message_type(self) -> &'static str {
         match self {
+            Self::CtrlSrvrJoinSession => "MESSAGE_TYPE_CTRL_SRVR_JOIN_SESSION",
+            Self::CtrlSrvrSetPlayerState => "MESSAGE_TYPE_CTRL_SRVR_SET_PLAYER_STATE",
+            Self::CtrlSrvrSetActiveRenderer => "MESSAGE_TYPE_CTRL_SRVR_SET_ACTIVE_RENDERER",
+            Self::CtrlSrvrSetVolume => "MESSAGE_TYPE_CTRL_SRVR_SET_VOLUME",
+            Self::CtrlSrvrSetLoopMode => "MESSAGE_TYPE_CTRL_SRVR_SET_LOOP_MODE",
+            Self::CtrlSrvrMuteVolume => "MESSAGE_TYPE_CTRL_SRVR_MUTE_VOLUME",
+            Self::CtrlSrvrSetMaxAudioQuality => "MESSAGE_TYPE_CTRL_SRVR_SET_MAX_AUDIO_QUALITY",
+            Self::CtrlSrvrAskForRendererState => "MESSAGE_TYPE_CTRL_SRVR_ASK_FOR_RENDERER_STATE",
             Self::CtrlSrvrQueueAddTracks => "MESSAGE_TYPE_CTRL_SRVR_QUEUE_ADD_TRACKS",
             Self::CtrlSrvrQueueLoadTracks => "MESSAGE_TYPE_CTRL_SRVR_QUEUE_LOAD_TRACKS",
             Self::CtrlSrvrQueueInsertTracks => "MESSAGE_TYPE_CTRL_SRVR_QUEUE_INSERT_TRACKS",

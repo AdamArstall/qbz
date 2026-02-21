@@ -17,6 +17,10 @@ pub enum QConnectMessageType {
     MessageTypeSrvrRndrSetLoopMode = 45,
     MessageTypeSrvrRndrSetShuffleMode = 46,
     MessageTypeSrvrRndrMuteVolume = 47,
+    MessageTypeCtrlSrvrJoinSession = 61,
+    MessageTypeCtrlSrvrSetPlayerState = 62,
+    MessageTypeCtrlSrvrSetActiveRenderer = 63,
+    MessageTypeCtrlSrvrSetVolume = 64,
     MessageTypeCtrlSrvrClearQueue = 65,
     MessageTypeCtrlSrvrQueueLoadTracks = 66,
     MessageTypeCtrlSrvrQueueInsertTracks = 67,
@@ -24,8 +28,12 @@ pub enum QConnectMessageType {
     MessageTypeCtrlSrvrQueueRemoveTracks = 69,
     MessageTypeCtrlSrvrQueueReorderTracks = 70,
     MessageTypeCtrlSrvrSetShuffleMode = 71,
+    MessageTypeCtrlSrvrSetLoopMode = 72,
+    MessageTypeCtrlSrvrMuteVolume = 73,
+    MessageTypeCtrlSrvrSetMaxAudioQuality = 74,
     MessageTypeCtrlSrvrSetQueueState = 75,
     MessageTypeCtrlSrvrAskForQueueState = 76,
+    MessageTypeCtrlSrvrAskForRendererState = 77,
     MessageTypeCtrlSrvrSetAutoplayMode = 78,
     MessageTypeCtrlSrvrAutoplayLoadTracks = 79,
     MessageTypeCtrlSrvrAutoplayRemoveTracks = 80,
@@ -84,6 +92,94 @@ pub struct SetQueueTrackWithContext {
     pub track_id: Option<i32>,
     #[prost(bytes = "vec", optional, tag = "2")]
     pub context_uuid: Option<Vec<u8>>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DeviceInfoMessage {
+    #[prost(bytes = "vec", optional, tag = "1")]
+    pub device_uuid: Option<Vec<u8>>,
+    #[prost(string, optional, tag = "2")]
+    pub friendly_name: Option<String>,
+    #[prost(string, optional, tag = "3")]
+    pub brand: Option<String>,
+    #[prost(string, optional, tag = "4")]
+    pub model: Option<String>,
+    #[prost(string, optional, tag = "5")]
+    pub serial_number: Option<String>,
+    #[prost(int32, optional, tag = "6")]
+    pub device_type: Option<i32>,
+    #[prost(string, optional, tag = "8")]
+    pub software_version: Option<String>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct JoinSessionMessage {
+    #[prost(bytes = "vec", optional, tag = "1")]
+    pub session_uuid: Option<Vec<u8>>,
+    #[prost(message, optional, tag = "2")]
+    pub device_info: Option<DeviceInfoMessage>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetPlayerStateQueueItemMessage {
+    #[prost(message, optional, tag = "1")]
+    pub queue_version: Option<QueueVersionRef>,
+    #[prost(int32, optional, tag = "2")]
+    pub id: Option<i32>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetPlayerStateMessage {
+    #[prost(int32, optional, tag = "1")]
+    pub playing_state: Option<i32>,
+    #[prost(int32, optional, tag = "2")]
+    pub current_position: Option<i32>,
+    #[prost(message, optional, tag = "3")]
+    pub current_queue_item: Option<SetPlayerStateQueueItemMessage>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetActiveRendererMessage {
+    #[prost(int32, optional, tag = "1")]
+    pub renderer_id: Option<i32>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetVolumeMessage {
+    #[prost(int32, optional, tag = "1")]
+    pub renderer_id: Option<i32>,
+    #[prost(int32, optional, tag = "2")]
+    pub volume: Option<i32>,
+    #[prost(int32, optional, tag = "3")]
+    pub volume_delta: Option<i32>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetLoopModeMessage {
+    #[prost(int32, optional, tag = "1")]
+    pub loop_mode: Option<i32>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MuteVolumeMessage {
+    #[prost(int32, optional, tag = "1")]
+    pub renderer_id: Option<i32>,
+    #[prost(bool, optional, tag = "2")]
+    pub value: Option<bool>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetMaxAudioQualityMessage {
+    #[prost(int32, optional, tag = "1")]
+    pub renderer_id: Option<i32>,
+    #[prost(int32, optional, tag = "2")]
+    pub max_audio_quality: Option<i32>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AskForRendererStateMessage {
+    #[prost(int32, optional, tag = "1")]
+    pub renderer_id: Option<i32>,
 }
 
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -630,6 +726,14 @@ pub struct QConnectMessage {
     pub srvr_rndr_set_shuffle_mode: Option<RendererSetShuffleModeMessage>,
     #[prost(message, optional, tag = "47")]
     pub srvr_rndr_mute_volume: Option<RendererMuteVolumeMessage>,
+    #[prost(message, optional, tag = "61")]
+    pub ctrl_srvr_join_session: Option<JoinSessionMessage>,
+    #[prost(message, optional, tag = "62")]
+    pub ctrl_srvr_set_player_state: Option<SetPlayerStateMessage>,
+    #[prost(message, optional, tag = "63")]
+    pub ctrl_srvr_set_active_renderer: Option<SetActiveRendererMessage>,
+    #[prost(message, optional, tag = "64")]
+    pub ctrl_srvr_set_volume: Option<SetVolumeMessage>,
     #[prost(message, optional, tag = "65")]
     pub ctrl_srvr_clear_queue: Option<ClearQueueMessage>,
     #[prost(message, optional, tag = "66")]
@@ -644,10 +748,18 @@ pub struct QConnectMessage {
     pub ctrl_srvr_queue_reorder_tracks: Option<QueueReorderTracksMessage>,
     #[prost(message, optional, tag = "71")]
     pub ctrl_srvr_set_shuffle_mode: Option<SetShuffleModeMessage>,
+    #[prost(message, optional, tag = "72")]
+    pub ctrl_srvr_set_loop_mode: Option<SetLoopModeMessage>,
+    #[prost(message, optional, tag = "73")]
+    pub ctrl_srvr_mute_volume: Option<MuteVolumeMessage>,
+    #[prost(message, optional, tag = "74")]
+    pub ctrl_srvr_set_max_audio_quality: Option<SetMaxAudioQualityMessage>,
     #[prost(message, optional, tag = "75")]
     pub ctrl_srvr_set_queue_state: Option<SetQueueStateMessage>,
     #[prost(message, optional, tag = "76")]
     pub ctrl_srvr_ask_for_queue_state: Option<AskForQueueStateMessage>,
+    #[prost(message, optional, tag = "77")]
+    pub ctrl_srvr_ask_for_renderer_state: Option<AskForRendererStateMessage>,
     #[prost(message, optional, tag = "78")]
     pub ctrl_srvr_set_autoplay_mode: Option<SetAutoplayModeMessage>,
     #[prost(message, optional, tag = "79")]

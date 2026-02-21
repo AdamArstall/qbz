@@ -10,14 +10,17 @@ use uuid::Uuid;
 use crate::{
     build_outbound_envelope,
     queue_command_proto::{
-        AskForQueueStateMessage, AutoplayLoadTracksMessage, AutoplayRemoveTracksMessage,
-        ClearQueueMessage, PlaybackPositionMessage, QConnectMessage, QConnectMessageType,
+        AskForQueueStateMessage, AskForRendererStateMessage, AutoplayLoadTracksMessage,
+        AutoplayRemoveTracksMessage, ClearQueueMessage, DeviceInfoMessage, JoinSessionMessage,
+        MuteVolumeMessage, PlaybackPositionMessage, QConnectMessage, QConnectMessageType,
         QConnectMessages, QueueAddTracksMessage, QueueInsertTracksMessage, QueueLoadTracksMessage,
         QueueRemoveTracksMessage, QueueReorderTracksMessage, QueueVersionRef,
         RendererFileAudioQualityChangedMessage, RendererMaxAudioQualityChangedMessage,
         RendererStateMessage, RendererStateUpdatedMessage, RendererVolumeChangedMessage,
-        RendererVolumeMutedMessage, SetAutoplayModeMessage, SetQueueStateMessage,
-        SetQueueTrackWithContext, SetShuffleModeMessage,
+        RendererVolumeMutedMessage, SetActiveRendererMessage, SetAutoplayModeMessage,
+        SetLoopModeMessage, SetMaxAudioQualityMessage, SetPlayerStateMessage,
+        SetPlayerStateQueueItemMessage, SetQueueStateMessage, SetQueueTrackWithContext,
+        SetShuffleModeMessage, SetVolumeMessage,
     },
     OutboundEnvelope, ProtocolError, QueueCommand, QueueCommandType, RendererReport,
     RendererReportType,
@@ -75,6 +78,81 @@ fn map_queue_command(command: &QueueCommand) -> Result<QConnectMessage, Protocol
     let action_uuid = Some(action_uuid_bytes(&command.action_uuid)?);
 
     match command.command_type {
+        QueueCommandType::CtrlSrvrJoinSession => Ok(QConnectMessage {
+            message_type: Some(QConnectMessageType::MessageTypeCtrlSrvrJoinSession as i32),
+            ctrl_srvr_join_session: Some(JoinSessionMessage {
+                session_uuid: optional_uuid_bytes(
+                    &command.payload,
+                    &["session_uuid", "sessionUuid"],
+                )?,
+                device_info: parse_device_info(&command.payload)?,
+            }),
+            ..Default::default()
+        }),
+        QueueCommandType::CtrlSrvrSetPlayerState => Ok(QConnectMessage {
+            message_type: Some(QConnectMessageType::MessageTypeCtrlSrvrSetPlayerState as i32),
+            ctrl_srvr_set_player_state: Some(SetPlayerStateMessage {
+                playing_state: optional_i32_any(
+                    &command.payload,
+                    &["playing_state", "playingState"],
+                )?,
+                current_position: optional_i32_any(
+                    &command.payload,
+                    &["current_position", "currentPosition"],
+                )?,
+                current_queue_item: parse_set_player_state_queue_item(&command.payload)?,
+            }),
+            ..Default::default()
+        }),
+        QueueCommandType::CtrlSrvrSetActiveRenderer => Ok(QConnectMessage {
+            message_type: Some(QConnectMessageType::MessageTypeCtrlSrvrSetActiveRenderer as i32),
+            ctrl_srvr_set_active_renderer: Some(SetActiveRendererMessage {
+                renderer_id: optional_i32_any(&command.payload, &["renderer_id", "rendererId"])?,
+            }),
+            ..Default::default()
+        }),
+        QueueCommandType::CtrlSrvrSetVolume => Ok(QConnectMessage {
+            message_type: Some(QConnectMessageType::MessageTypeCtrlSrvrSetVolume as i32),
+            ctrl_srvr_set_volume: Some(SetVolumeMessage {
+                renderer_id: optional_i32_any(&command.payload, &["renderer_id", "rendererId"])?,
+                volume: optional_i32_any(&command.payload, &["volume"])?,
+                volume_delta: optional_i32_any(&command.payload, &["volume_delta", "volumeDelta"])?,
+            }),
+            ..Default::default()
+        }),
+        QueueCommandType::CtrlSrvrSetLoopMode => Ok(QConnectMessage {
+            message_type: Some(QConnectMessageType::MessageTypeCtrlSrvrSetLoopMode as i32),
+            ctrl_srvr_set_loop_mode: Some(SetLoopModeMessage {
+                loop_mode: optional_i32_any(&command.payload, &["loop_mode", "loopMode"])?,
+            }),
+            ..Default::default()
+        }),
+        QueueCommandType::CtrlSrvrMuteVolume => Ok(QConnectMessage {
+            message_type: Some(QConnectMessageType::MessageTypeCtrlSrvrMuteVolume as i32),
+            ctrl_srvr_mute_volume: Some(MuteVolumeMessage {
+                renderer_id: optional_i32_any(&command.payload, &["renderer_id", "rendererId"])?,
+                value: Some(optional_bool_any(&command.payload, &["value"], false)),
+            }),
+            ..Default::default()
+        }),
+        QueueCommandType::CtrlSrvrSetMaxAudioQuality => Ok(QConnectMessage {
+            message_type: Some(QConnectMessageType::MessageTypeCtrlSrvrSetMaxAudioQuality as i32),
+            ctrl_srvr_set_max_audio_quality: Some(SetMaxAudioQualityMessage {
+                renderer_id: optional_i32_any(&command.payload, &["renderer_id", "rendererId"])?,
+                max_audio_quality: optional_i32_any(
+                    &command.payload,
+                    &["max_audio_quality", "maxAudioQuality"],
+                )?,
+            }),
+            ..Default::default()
+        }),
+        QueueCommandType::CtrlSrvrAskForRendererState => Ok(QConnectMessage {
+            message_type: Some(QConnectMessageType::MessageTypeCtrlSrvrAskForRendererState as i32),
+            ctrl_srvr_ask_for_renderer_state: Some(AskForRendererStateMessage {
+                renderer_id: optional_i32_any(&command.payload, &["renderer_id", "rendererId"])?,
+            }),
+            ..Default::default()
+        }),
         QueueCommandType::CtrlSrvrQueueAddTracks => {
             let track_ids = required_i32_list(&command.payload, "track_ids")?;
             let shuffle_seed = optional_i32(&command.payload, "shuffle_seed")?;
@@ -530,8 +608,134 @@ fn optional_i32(payload: &Value, key: &str) -> Result<Option<i32>, ProtocolError
     }
 }
 
+fn optional_i32_any(payload: &Value, keys: &[&str]) -> Result<Option<i32>, ProtocolError> {
+    for key in keys {
+        if payload.get(*key).is_some() {
+            return optional_i32(payload, key);
+        }
+    }
+
+    Ok(None)
+}
+
 fn optional_bool(payload: &Value, key: &str, default: bool) -> bool {
     payload.get(key).and_then(Value::as_bool).unwrap_or(default)
+}
+
+fn optional_bool_any(payload: &Value, keys: &[&str], default: bool) -> bool {
+    for key in keys {
+        let Some(value) = payload.get(*key) else {
+            continue;
+        };
+
+        if let Some(as_bool) = value.as_bool() {
+            return as_bool;
+        }
+        if let Some(as_int) = value.as_i64() {
+            return as_int != 0;
+        }
+        if let Some(as_uint) = value.as_u64() {
+            return as_uint != 0;
+        }
+    }
+
+    default
+}
+
+fn optional_string_any(payload: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| payload.get(*key).and_then(Value::as_str))
+        .map(ToString::to_string)
+}
+
+fn parse_queue_version_ref(payload: &Value, key: &str) -> Option<QueueVersionRef> {
+    let version = payload.get(key)?;
+    let major = version
+        .get("major")
+        .and_then(Value::as_u64)
+        .and_then(|value| i32::try_from(value).ok())?;
+    let minor = version
+        .get("minor")
+        .and_then(Value::as_u64)
+        .and_then(|value| i32::try_from(value).ok())?;
+
+    Some(QueueVersionRef {
+        major: Some(major),
+        minor: Some(minor),
+    })
+}
+
+fn parse_device_info(payload: &Value) -> Result<Option<DeviceInfoMessage>, ProtocolError> {
+    let nested = payload
+        .get("device_info")
+        .or_else(|| payload.get("deviceInfo"));
+    let source = match nested {
+        Some(value) => value,
+        None => payload,
+    };
+
+    if !source.is_object() {
+        return Err(ProtocolError::InvalidPayload(
+            "field 'device_info' must be an object".to_string(),
+        ));
+    }
+
+    let device_uuid = optional_uuid_bytes(source, &["device_uuid", "deviceUuid", "uuid"])?;
+    let friendly_name = optional_string_any(source, &["friendly_name", "friendlyName"]);
+    let brand = optional_string_any(source, &["brand"]);
+    let model = optional_string_any(source, &["model"]);
+    let serial_number = optional_string_any(source, &["serial_number", "serialNumber"]);
+    let device_type = optional_i32_any(source, &["device_type", "deviceType"])?;
+    let software_version = optional_string_any(source, &["software_version", "softwareVersion"]);
+
+    if device_uuid.is_none()
+        && friendly_name.is_none()
+        && brand.is_none()
+        && model.is_none()
+        && serial_number.is_none()
+        && device_type.is_none()
+        && software_version.is_none()
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(DeviceInfoMessage {
+        device_uuid,
+        friendly_name,
+        brand,
+        model,
+        serial_number,
+        device_type,
+        software_version,
+    }))
+}
+
+fn parse_set_player_state_queue_item(
+    payload: &Value,
+) -> Result<Option<SetPlayerStateQueueItemMessage>, ProtocolError> {
+    let nested = payload
+        .get("current_queue_item")
+        .or_else(|| payload.get("currentQueueItem"));
+    let source = match nested {
+        Some(value) => value,
+        None => payload,
+    };
+
+    if !source.is_object() {
+        return Err(ProtocolError::InvalidPayload(
+            "field 'current_queue_item' must be an object".to_string(),
+        ));
+    }
+
+    let queue_version = parse_queue_version_ref(source, "queue_version")
+        .or_else(|| parse_queue_version_ref(source, "queueVersion"));
+    let id = optional_i32_any(source, &["id", "queue_item_id", "queueItemId"])?;
+
+    if queue_version.is_none() && id.is_none() {
+        return Ok(None);
+    }
+
+    Ok(Some(SetPlayerStateQueueItemMessage { queue_version, id }))
 }
 
 fn parse_uuid(value: &str) -> Result<Vec<u8>, ProtocolError> {
@@ -613,6 +817,94 @@ mod tests {
 
         let payload = encode_queue_command_batch(&command).expect("batch payload");
         assert!(!payload.is_empty());
+    }
+
+    #[test]
+    fn encodes_join_session_message_with_device_info() {
+        let command = QueueCommand::new(
+            QueueCommandType::CtrlSrvrJoinSession,
+            "a043f34c-15f5-44bb-a5ad-06ce4e0c009d",
+            QueueVersion::new(1, 0),
+            json!({
+                "session_uuid": "a3f7be0f-3854-44c6-9194-c93cedec322a",
+                "device_info": {
+                    "device_uuid": "3c2da4ec-f4b9-4600-9177-7f8a44ce69f4",
+                    "friendly_name": "QBZ Desktop",
+                    "brand": "QBZ",
+                    "model": "Linux",
+                    "serial_number": "qbz-dev-1",
+                    "device_type": 6,
+                    "software_version": "0.1.0"
+                }
+            }),
+        );
+
+        let payload = encode_queue_command_batch(&command).expect("batch payload");
+        let decoded = QConnectMessages::decode(payload.as_slice()).expect("decode batch");
+        assert_eq!(decoded.messages.len(), 1);
+
+        let message = &decoded.messages[0];
+        assert_eq!(
+            message.message_type,
+            Some(QConnectMessageType::MessageTypeCtrlSrvrJoinSession as i32)
+        );
+        let join = message
+            .ctrl_srvr_join_session
+            .as_ref()
+            .expect("join payload");
+        assert!(join.session_uuid.is_some());
+        let device = join.device_info.as_ref().expect("device_info payload");
+        assert_eq!(device.friendly_name.as_deref(), Some("QBZ Desktop"));
+        assert_eq!(device.device_type, Some(6));
+    }
+
+    #[test]
+    fn encodes_set_player_state_with_current_queue_item() {
+        let command = QueueCommand::new(
+            QueueCommandType::CtrlSrvrSetPlayerState,
+            "132db70b-d293-4576-bfd6-747c40ab764f",
+            QueueVersion::new(5, 3),
+            json!({
+                "playing_state": 2,
+                "current_position": 42123,
+                "current_queue_item": {
+                    "queue_version": {
+                        "major": 5,
+                        "minor": 3
+                    },
+                    "id": 901
+                }
+            }),
+        );
+
+        let payload = encode_queue_command_batch(&command).expect("batch payload");
+        let decoded = QConnectMessages::decode(payload.as_slice()).expect("decode batch");
+        assert_eq!(decoded.messages.len(), 1);
+
+        let message = &decoded.messages[0];
+        assert_eq!(
+            message.message_type,
+            Some(QConnectMessageType::MessageTypeCtrlSrvrSetPlayerState as i32)
+        );
+        let player_state = message
+            .ctrl_srvr_set_player_state
+            .as_ref()
+            .expect("player state payload");
+        assert_eq!(player_state.playing_state, Some(2));
+        assert_eq!(player_state.current_position, Some(42_123));
+        let queue_item = player_state
+            .current_queue_item
+            .as_ref()
+            .expect("current queue item payload");
+        assert_eq!(queue_item.id, Some(901));
+        assert_eq!(
+            queue_item.queue_version.as_ref().and_then(|v| v.major),
+            Some(5)
+        );
+        assert_eq!(
+            queue_item.queue_version.as_ref().and_then(|v| v.minor),
+            Some(3)
+        );
     }
 
     #[test]
