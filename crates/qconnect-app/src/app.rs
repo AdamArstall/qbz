@@ -4,12 +4,12 @@ use std::{
 };
 
 use qconnect_core::{
-    apply_event, telemetry, PendingCorrelation, PendingQueueAction, QConnectQueueState, QueueEvent,
-    QueueItem,
+    apply_event, apply_renderer_command, telemetry, PendingCorrelation, PendingQueueAction,
+    QConnectQueueState, QConnectRendererState, QueueEvent, QueueItem, RendererCommand,
 };
 use qconnect_protocol::{
     build_qconnect_outbound_envelope, parse_inbound_event, InboundEnvelope, QueueCommand,
-    QueueCommandType, QueueEventType, QueueServerEvent,
+    QueueCommandType, QueueEventType, QueueServerEvent, RendererCommandType, RendererServerCommand,
 };
 use qconnect_transport_ws::{TransportEvent, WsTransport, WsTransportConfig};
 use serde_json::Value;
@@ -94,6 +94,10 @@ where
         self.state.lock().await.queue.clone()
     }
 
+    pub async fn renderer_state_snapshot(&self) -> QConnectRendererState {
+        self.state.lock().await.renderer.clone()
+    }
+
     pub async fn build_queue_command(
         &self,
         command_type: QueueCommandType,
@@ -170,6 +174,9 @@ where
             }
             TransportEvent::InboundQueueServerEvent(event) => {
                 self.apply_server_event(event).await?;
+            }
+            TransportEvent::InboundRendererServerCommand(command) => {
+                self.apply_renderer_server_command(command).await;
             }
             TransportEvent::Authenticated
             | TransportEvent::Subscribed
@@ -267,6 +274,22 @@ where
             self.trigger_queue_state_resync().await;
         }
         Ok(())
+    }
+
+    async fn apply_renderer_server_command(&self, command: RendererServerCommand) {
+        let Some(renderer_command) = map_renderer_server_command(&command) else {
+            return;
+        };
+
+        let snapshot = {
+            let mut state = self.state.lock().await;
+            apply_renderer_command(&mut state.renderer, &renderer_command, now_ms());
+            state.renderer.clone()
+        };
+
+        self.sink
+            .on_event(QconnectAppEvent::RendererUpdated(snapshot))
+            .await;
     }
 
     fn spawn_pending_timeout_watch(&self, action_uuid: String) {
@@ -472,6 +495,40 @@ fn map_server_event(event: &QueueServerEvent, current: &QConnectQueueState) -> Q
     }
 }
 
+fn map_renderer_server_command(command: &RendererServerCommand) -> Option<RendererCommand> {
+    match command.command_type {
+        RendererCommandType::SrvrRndrSetState => Some(RendererCommand::SetState {
+            playing_state: parse_i32(&command.payload, "playing_state"),
+            current_position_ms: parse_u64(&command.payload, "current_position"),
+            current_track: parse_renderer_track(&command.payload, "current_track"),
+            next_track: parse_renderer_track(&command.payload, "next_track"),
+        }),
+        RendererCommandType::SrvrRndrSetVolume => Some(RendererCommand::SetVolume {
+            volume: parse_i32(&command.payload, "volume"),
+            volume_delta: parse_i32(&command.payload, "volume_delta"),
+        }),
+        RendererCommandType::SrvrRndrSetActive => Some(RendererCommand::SetActive {
+            active: parse_bool(&command.payload, "active", false),
+        }),
+        RendererCommandType::SrvrRndrSetMaxAudioQuality => {
+            parse_i32(&command.payload, "max_audio_quality")
+                .map(|max_audio_quality| RendererCommand::SetMaxAudioQuality { max_audio_quality })
+        }
+        RendererCommandType::SrvrRndrSetLoopMode => parse_i32(&command.payload, "loop_mode")
+            .map(|loop_mode| RendererCommand::SetLoopMode { loop_mode }),
+        RendererCommandType::SrvrRndrSetShuffleMode => Some(RendererCommand::SetShuffleMode {
+            shuffle_mode: parse_bool(&command.payload, "shuffle_mode", false),
+        }),
+        RendererCommandType::SrvrRndrMuteVolume => Some(RendererCommand::MuteVolume {
+            value: parse_bool(&command.payload, "value", false),
+        }),
+    }
+}
+
+fn parse_renderer_track(payload: &Value, field: &str) -> Option<QueueItem> {
+    payload.get(field).and_then(parse_queue_item)
+}
+
 fn parse_queue_items(payload: &Value, field: &str) -> Vec<QueueItem> {
     payload
         .get(field)
@@ -530,6 +587,10 @@ fn parse_optional_bool(payload: &Value, field: &str) -> Option<bool> {
     payload.get(field).and_then(Value::as_bool)
 }
 
+fn parse_i32(payload: &Value, field: &str) -> Option<i32> {
+    payload.get(field).and_then(value_as_i32)
+}
+
 fn parse_usize_list(payload: &Value, field: &str) -> Vec<usize> {
     payload
         .get(field)
@@ -548,6 +609,13 @@ fn value_as_u64(value: &Value) -> Option<u64> {
     value
         .as_u64()
         .or_else(|| value.as_i64().and_then(|entry| u64::try_from(entry).ok()))
+}
+
+fn value_as_i32(value: &Value) -> Option<i32> {
+    value
+        .as_i64()
+        .and_then(|entry| i32::try_from(entry).ok())
+        .or_else(|| value.as_u64().and_then(|entry| i32::try_from(entry).ok()))
 }
 
 fn value_to_string(value: &Value) -> String {
@@ -577,7 +645,10 @@ mod tests {
     use crate::{QconnectAppEvent, QconnectEventSink};
 
     use super::QconnectApp;
-    use qconnect_protocol::{QueueCommandType, QueueEventType, QueueServerEvent};
+    use qconnect_protocol::{
+        QueueCommandType, QueueEventType, QueueServerEvent, RendererCommandType,
+        RendererServerCommand,
+    };
     use qconnect_transport_ws::WsTransportConfig;
 
     #[derive(Debug, Default, Clone)]
@@ -735,6 +806,56 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, QconnectAppEvent::QueueUpdated(_))),
             "ignored late queue error should not mutate queue"
+        );
+    }
+
+    #[tokio::test]
+    async fn inbound_renderer_command_updates_renderer_state() {
+        let (app, sink, _, _events_rx) = build_connected_app().await;
+
+        app.apply_renderer_server_command(RendererServerCommand {
+            command_type: RendererCommandType::SrvrRndrSetState,
+            payload: json!({
+                "playing_state": 2,
+                "current_position": 65321,
+                "current_track": {
+                    "track_context_uuid": "ctx-remote",
+                    "track_id": 777001,
+                    "queue_item_id": 991
+                }
+            }),
+        })
+        .await;
+
+        app.apply_renderer_server_command(RendererServerCommand {
+            command_type: RendererCommandType::SrvrRndrSetVolume,
+            payload: json!({
+                "volume": 52,
+                "volume_delta": 3
+            }),
+        })
+        .await;
+
+        let renderer = app.renderer_state_snapshot().await;
+        assert_eq!(renderer.playing_state, Some(2));
+        assert_eq!(renderer.current_position_ms, Some(65_321));
+        assert_eq!(renderer.volume, Some(55));
+        assert_eq!(renderer.volume_delta, Some(3));
+        assert_eq!(
+            renderer
+                .current_track
+                .as_ref()
+                .map(|item| item.queue_item_id),
+            Some(991)
+        );
+
+        let events = sink.snapshot().await;
+        assert!(
+            events
+                .iter()
+                .filter(|event| matches!(event, QconnectAppEvent::RendererUpdated(_)))
+                .count()
+                >= 2
         );
     }
 }

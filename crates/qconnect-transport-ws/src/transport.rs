@@ -10,8 +10,9 @@ use prost::{
     Message,
 };
 use qconnect_protocol::{
-    decode_inbound_json, decode_queue_server_events, encode_outbound_payload_bytes,
-    InboundEnvelope, OutboundEnvelope, QueueServerEvent,
+    decode_inbound_json, decode_queue_server_events, decode_renderer_server_commands,
+    encode_outbound_payload_bytes, InboundEnvelope, OutboundEnvelope, QueueServerEvent,
+    RendererServerCommand,
 };
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -61,6 +62,7 @@ pub enum TransportEvent {
         action_uuid: String,
     },
     InboundQueueServerEvent(QueueServerEvent),
+    InboundRendererServerCommand(RendererServerCommand),
     InboundReceived(InboundEnvelope),
 }
 
@@ -595,6 +597,15 @@ fn handle_incoming_binary(
             if let Ok(events) = decode_queue_server_events(&inner_payload) {
                 for event in events {
                     emit(events_tx, TransportEvent::InboundQueueServerEvent(event));
+                }
+            }
+
+            if let Ok(commands) = decode_renderer_server_commands(&inner_payload) {
+                for command in commands {
+                    emit(
+                        events_tx,
+                        TransportEvent::InboundRendererServerCommand(command),
+                    );
                 }
             }
 
