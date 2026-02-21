@@ -862,7 +862,7 @@ pub struct CtrlDeviceAudioQualityChangedMessage {
 
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QConnectMessages {
-    #[prost(uint64, optional, tag = "1")]
+    #[prost(fixed64, optional, tag = "1")]
     pub messages_time: Option<u64>,
     #[prost(int32, optional, tag = "2")]
     pub messages_id: Option<i32>,

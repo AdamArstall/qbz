@@ -594,33 +594,17 @@ fn handle_incoming_binary(
                 },
             );
 
-            // The server wraps QConnectMessages inside an inner envelope with:
-            //   field 1 (fixed64): correlation ID
-            //   field 2 (varint): sequence number
-            //   field 3 (bytes): the actual QConnectMessage protobuf
-            // We must unwrap field 3 before passing to the decoders.
-            let qconnect_bytes = match QCloudInnerEnvelope::decode(inner_payload.as_slice()) {
-                Ok(envelope) => {
-                    let msg = envelope.message.unwrap_or_default();
-                    log::info!(
-                        "[QConnect/Decode] Envelope unwrapped: corr={:?} seq={:?} message_len={}",
-                        envelope.correlation_id,
-                        envelope.sequence,
-                        msg.len()
-                    );
-                    msg
-                }
-                Err(err) => {
-                    log::warn!(
-                        "[QConnect/Decode] Envelope decode failed ({}), using raw {} bytes",
-                        err,
-                        inner_payload.len()
-                    );
-                    inner_payload
-                }
-            };
+            // inner_payload is a QConnectBatch (QConnectMessages) protobuf:
+            //   field 1 (fixed64): messages_time
+            //   field 2 (int32): messages_id
+            //   field 3 (repeated): QConnectMessage entries
+            // Pass directly to decoders — no inner envelope unwrapping needed.
+            log::info!(
+                "[QConnect/Decode] Decoding QConnectBatch: {} bytes",
+                inner_payload.len()
+            );
 
-            match decode_queue_server_events(&qconnect_bytes) {
+            match decode_queue_server_events(&inner_payload) {
                 Ok(events) => {
                     log::info!("[QConnect/Decode] Queue events decoded: {}", events.len());
                     for event in events {
@@ -632,7 +616,7 @@ fn handle_incoming_binary(
                 }
             }
 
-            match decode_renderer_server_commands(&qconnect_bytes) {
+            match decode_renderer_server_commands(&inner_payload) {
                 Ok(commands) => {
                     if !commands.is_empty() {
                         log::info!("[QConnect/Decode] Renderer commands decoded: {}", commands.len());
@@ -649,7 +633,7 @@ fn handle_incoming_binary(
                 }
             }
 
-            if let Ok(inbound) = decode_inbound_json(&qconnect_bytes) {
+            if let Ok(inbound) = decode_inbound_json(&inner_payload) {
                 emit(events_tx, TransportEvent::InboundReceived(inbound));
             }
         }
@@ -830,18 +814,6 @@ struct CloudPayload {
     pub dests: Vec<Vec<u8>>,
     #[prost(bytes = "vec", optional, tag = "7")]
     pub payload: Option<Vec<u8>>,
-}
-
-/// Inner envelope that wraps QConnectMessage inside CloudPayload.payload.
-/// The server sends: CloudPayload { payload: QCloudInnerEnvelope { message: QConnectMessage } }
-#[derive(Clone, PartialEq, ::prost::Message)]
-struct QCloudInnerEnvelope {
-    #[prost(fixed64, optional, tag = "1")]
-    pub correlation_id: Option<u64>,
-    #[prost(uint64, optional, tag = "2")]
-    pub sequence: Option<u64>,
-    #[prost(bytes = "vec", optional, tag = "3")]
-    pub message: Option<Vec<u8>>,
 }
 
 #[cfg(test)]
