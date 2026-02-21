@@ -95,6 +95,16 @@ pub struct SetQueueTrackWithContext {
 }
 
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DeviceCapabilitiesMessage {
+    #[prost(int32, optional, tag = "1")]
+    pub min_audio_quality: Option<i32>,
+    #[prost(int32, optional, tag = "2")]
+    pub max_audio_quality: Option<i32>,
+    #[prost(int32, optional, tag = "3")]
+    pub volume_remote_control: Option<i32>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DeviceInfoMessage {
     #[prost(bytes = "vec", optional, tag = "1")]
     pub device_uuid: Option<Vec<u8>>,
@@ -108,6 +118,8 @@ pub struct DeviceInfoMessage {
     pub serial_number: Option<String>,
     #[prost(int32, optional, tag = "6")]
     pub device_type: Option<i32>,
+    #[prost(message, optional, tag = "7")]
+    pub capabilities: Option<DeviceCapabilitiesMessage>,
     #[prost(string, optional, tag = "8")]
     pub software_version: Option<String>,
 }
@@ -118,6 +130,15 @@ pub struct JoinSessionMessage {
     pub session_uuid: Option<Vec<u8>>,
     #[prost(message, optional, tag = "2")]
     pub device_info: Option<DeviceInfoMessage>,
+    /// Renderer-only: reason for joining (0=unknown, 1=controller_request, 2=reconnection)
+    #[prost(int32, optional, tag = "3")]
+    pub reason: Option<i32>,
+    /// Renderer-only: initial playback state sent on join
+    #[prost(message, optional, tag = "4")]
+    pub initial_state: Option<RendererStateMessage>,
+    /// Renderer-only: whether this renderer is active
+    #[prost(bool, optional, tag = "5")]
+    pub is_active: Option<bool>,
 }
 
 #[derive(Clone, PartialEq, ::prost::Message)]

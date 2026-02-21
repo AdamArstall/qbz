@@ -11,16 +11,16 @@ use crate::{
     build_outbound_envelope,
     queue_command_proto::{
         AskForQueueStateMessage, AskForRendererStateMessage, AutoplayLoadTracksMessage,
-        AutoplayRemoveTracksMessage, ClearQueueMessage, DeviceInfoMessage, JoinSessionMessage,
-        MuteVolumeMessage, PlaybackPositionMessage, QConnectMessage, QConnectMessageType,
-        QConnectMessages, QueueAddTracksMessage, QueueInsertTracksMessage, QueueLoadTracksMessage,
-        QueueRemoveTracksMessage, QueueReorderTracksMessage, QueueVersionRef,
-        RendererFileAudioQualityChangedMessage, RendererMaxAudioQualityChangedMessage,
-        RendererStateMessage, RendererStateUpdatedMessage, RendererVolumeChangedMessage,
-        RendererVolumeMutedMessage, SetActiveRendererMessage, SetAutoplayModeMessage,
-        SetLoopModeMessage, SetMaxAudioQualityMessage, SetPlayerStateMessage,
-        SetPlayerStateQueueItemMessage, SetQueueStateMessage, SetQueueTrackWithContext,
-        SetShuffleModeMessage, SetVolumeMessage,
+        AutoplayRemoveTracksMessage, ClearQueueMessage, DeviceCapabilitiesMessage,
+        DeviceInfoMessage, JoinSessionMessage, MuteVolumeMessage, PlaybackPositionMessage,
+        QConnectMessage, QConnectMessageType, QConnectMessages, QueueAddTracksMessage,
+        QueueInsertTracksMessage, QueueLoadTracksMessage, QueueRemoveTracksMessage,
+        QueueReorderTracksMessage, QueueVersionRef, RendererFileAudioQualityChangedMessage,
+        RendererMaxAudioQualityChangedMessage, RendererStateMessage, RendererStateUpdatedMessage,
+        RendererVolumeChangedMessage, RendererVolumeMutedMessage, SetActiveRendererMessage,
+        SetAutoplayModeMessage, SetLoopModeMessage, SetMaxAudioQualityMessage,
+        SetPlayerStateMessage, SetPlayerStateQueueItemMessage, SetQueueStateMessage,
+        SetQueueTrackWithContext, SetShuffleModeMessage, SetVolumeMessage,
     },
     OutboundEnvelope, ProtocolError, QueueCommand, QueueCommandType, RendererReport,
     RendererReportType,
@@ -86,6 +86,10 @@ fn map_queue_command(command: &QueueCommand) -> Result<QConnectMessage, Protocol
                     &["session_uuid", "sessionUuid"],
                 )?,
                 device_info: parse_device_info(&command.payload)?,
+                // Controller JoinSession doesn't use renderer-specific fields
+                reason: None,
+                initial_state: None,
+                is_active: None,
             }),
             ..Default::default()
         }),
@@ -390,14 +394,26 @@ fn map_queue_command(command: &QueueCommand) -> Result<QConnectMessage, Protocol
 
 fn map_renderer_report(report: &RendererReport) -> Result<QConnectMessage, ProtocolError> {
     match report.report_type {
-        RendererReportType::RndrSrvrJoinSession => Ok(QConnectMessage {
-            message_type: Some(QConnectMessageType::MessageTypeRndrSrvrJoinSession as i32),
-            rndr_srvr_join_session: Some(JoinSessionMessage {
-                session_uuid: optional_uuid_bytes(&report.payload, &["session_uuid", "sessionUuid"])?,
-                device_info: parse_device_info(&report.payload)?,
-            }),
-            ..Default::default()
-        }),
+        RendererReportType::RndrSrvrJoinSession => {
+            let initial_state = parse_renderer_initial_state(&report.payload)?;
+            let is_active = Some(optional_bool(&report.payload, "is_active", false));
+            let reason = optional_i32(&report.payload, "reason")?;
+
+            Ok(QConnectMessage {
+                message_type: Some(QConnectMessageType::MessageTypeRndrSrvrJoinSession as i32),
+                rndr_srvr_join_session: Some(JoinSessionMessage {
+                    session_uuid: optional_uuid_bytes(
+                        &report.payload,
+                        &["session_uuid", "sessionUuid"],
+                    )?,
+                    device_info: parse_device_info(&report.payload)?,
+                    reason,
+                    initial_state,
+                    is_active,
+                }),
+                ..Default::default()
+            })
+        }
         RendererReportType::RndrSrvrDeviceInfoUpdated => Ok(QConnectMessage {
             message_type: Some(QConnectMessageType::MessageTypeRndrSrvrDeviceInfoUpdated as i32),
             rndr_srvr_device_info_updated: parse_device_info(&report.payload)?,
@@ -700,6 +716,7 @@ fn parse_device_info(payload: &Value) -> Result<Option<DeviceInfoMessage>, Proto
     let serial_number = optional_string_any(source, &["serial_number", "serialNumber"]);
     let device_type = optional_i32_any(source, &["device_type", "deviceType"])?;
     let software_version = optional_string_any(source, &["software_version", "softwareVersion"]);
+    let capabilities = parse_device_capabilities(source)?;
 
     if device_uuid.is_none()
         && friendly_name.is_none()
@@ -708,6 +725,7 @@ fn parse_device_info(payload: &Value) -> Result<Option<DeviceInfoMessage>, Proto
         && serial_number.is_none()
         && device_type.is_none()
         && software_version.is_none()
+        && capabilities.is_none()
     {
         return Ok(None);
     }
@@ -719,7 +737,84 @@ fn parse_device_info(payload: &Value) -> Result<Option<DeviceInfoMessage>, Proto
         model,
         serial_number,
         device_type,
+        capabilities,
         software_version,
+    }))
+}
+
+fn parse_device_capabilities(
+    source: &Value,
+) -> Result<Option<DeviceCapabilitiesMessage>, ProtocolError> {
+    let nested = source
+        .get("capabilities")
+        .or_else(|| source.get("deviceCapabilities"));
+
+    if let Some(caps) = nested {
+        if caps.is_object() {
+            return Ok(Some(DeviceCapabilitiesMessage {
+                min_audio_quality: optional_i32_any(
+                    caps,
+                    &["min_audio_quality", "minAudioQuality"],
+                )?,
+                max_audio_quality: optional_i32_any(
+                    caps,
+                    &["max_audio_quality", "maxAudioQuality"],
+                )?,
+                volume_remote_control: optional_i32_any(
+                    caps,
+                    &["volume_remote_control", "volumeRemoteControl"],
+                )?,
+            }));
+        }
+    }
+
+    // Check flat fields (capabilities declared directly on device_info payload)
+    let min_aq = optional_i32_any(source, &["min_audio_quality", "minAudioQuality"])?;
+    let max_aq = optional_i32_any(source, &["max_audio_quality", "maxAudioQuality"])?;
+    let vol_rc = optional_i32_any(source, &["volume_remote_control", "volumeRemoteControl"])?;
+
+    if min_aq.is_some() || max_aq.is_some() || vol_rc.is_some() {
+        return Ok(Some(DeviceCapabilitiesMessage {
+            min_audio_quality: min_aq,
+            max_audio_quality: max_aq,
+            volume_remote_control: vol_rc,
+        }));
+    }
+
+    Ok(None)
+}
+
+fn parse_renderer_initial_state(
+    payload: &Value,
+) -> Result<Option<RendererStateMessage>, ProtocolError> {
+    let nested = payload
+        .get("initial_state")
+        .or_else(|| payload.get("initialState"));
+
+    let Some(source) = nested else {
+        return Ok(None);
+    };
+
+    if !source.is_object() {
+        return Ok(None);
+    }
+
+    let current_position = optional_i32(source, "current_position")?;
+    let playback_position = current_position.map(|value| PlaybackPositionMessage {
+        timestamp: Some(now_ms()),
+        value: Some(value),
+    });
+
+    Ok(Some(RendererStateMessage {
+        playing_state: optional_i32(source, "playing_state")?,
+        buffer_state: optional_i32(source, "buffer_state")?,
+        current_position: playback_position,
+        duration: optional_i32(source, "duration")?,
+        queue_version: optional_queue_version(source, "queue_version")?
+            .map(|v| to_proto_queue_version(v))
+            .transpose()?,
+        current_queue_item_id: optional_i32(source, "current_queue_item_id")?,
+        next_queue_item_id: optional_i32(source, "next_queue_item_id")?,
     }))
 }
 

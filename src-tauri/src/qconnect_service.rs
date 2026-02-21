@@ -28,14 +28,22 @@ const PLAYING_STATE_UNKNOWN: i32 = 0;
 const PLAYING_STATE_STOPPED: i32 = 1;
 const PLAYING_STATE_PLAYING: i32 = 2;
 const PLAYING_STATE_PAUSED: i32 = 3;
+const BUFFER_STATE_OK: i32 = 2;
 const QCONNECT_QWS_TOKEN_KIND: &str = "jwt_qws";
 const QCONNECT_QWS_CREATE_TOKEN_PATH: &str = "/qws/createToken";
 const DEFAULT_QCONNECT_DEVICE_NAME: &str = "QBZ Desktop";
 const DEFAULT_QCONNECT_DEVICE_BRAND: &str = "QBZ";
 const DEFAULT_QCONNECT_DEVICE_MODEL: &str = "QBZ";
-const DEFAULT_QCONNECT_DEVICE_TYPE: i32 = 5;
+const DEFAULT_QCONNECT_DEVICE_TYPE: i32 = 5; // computer
 const DEFAULT_QCONNECT_SOFTWARE_PREFIX: &str = "qbz";
 const QCONNECT_REMOTE_QUEUE_SOURCE: &str = "qobuz_connect_remote";
+// AudioQuality enum: 0=unknown, 1=mp3, 2=cd, 3=hires_l1, 4=hires_l2(192k), 5=hires_l3(384k)
+const AUDIO_QUALITY_MP3: i32 = 1;
+const AUDIO_QUALITY_HIRES_LEVEL2: i32 = 4;
+// VolumeRemoteControl enum: 0=unknown, 1=not_allowed, 2=allowed
+const VOLUME_REMOTE_CONTROL_ALLOWED: i32 = 2;
+// JoinSessionReason: 0=unknown, 1=controller_request, 2=reconnection
+const JOIN_SESSION_REASON_CONTROLLER_REQUEST: i32 = 1;
 static QCONNECT_DEVICE_UUID: OnceLock<String> = OnceLock::new();
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -191,6 +199,13 @@ pub struct QconnectAdmissionBlockedEvent {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct QconnectDeviceCapabilitiesPayload {
+    pub min_audio_quality: Option<i32>,
+    pub max_audio_quality: Option<i32>,
+    pub volume_remote_control: Option<i32>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct QconnectDeviceInfoPayload {
     pub device_uuid: Option<String>,
     pub friendly_name: Option<String>,
@@ -198,6 +213,7 @@ pub struct QconnectDeviceInfoPayload {
     pub model: Option<String>,
     pub serial_number: Option<String>,
     pub device_type: Option<i32>,
+    pub capabilities: Option<QconnectDeviceCapabilitiesPayload>,
     pub software_version: Option<String>,
 }
 
@@ -835,11 +851,23 @@ async fn bootstrap_remote_presence(
     let device_info = default_qconnect_device_info();
     let queue_version_ref = app.queue_state_snapshot().await.version;
 
-    let renderer_join_payload = serde_json::to_value(QconnectJoinSessionRequest {
-        session_uuid: None,
-        device_info: Some(device_info.clone()),
-    })
-    .map_err(|err| format!("serialize renderer join_session bootstrap payload: {err}"))?;
+    // 1. Renderer JoinSession with is_active=true, initial state, and capabilities
+    let renderer_join_payload = serde_json::json!({
+        "device_info": serde_json::to_value(&device_info)
+            .map_err(|err| format!("serialize device_info: {err}"))?,
+        "is_active": true,
+        "reason": JOIN_SESSION_REASON_CONTROLLER_REQUEST,
+        "initial_state": {
+            "playing_state": PLAYING_STATE_STOPPED,
+            "buffer_state": BUFFER_STATE_OK,
+            "current_position": 0,
+            "duration": 0,
+            "queue_version": {
+                "major": queue_version_ref.major,
+                "minor": queue_version_ref.minor
+            }
+        }
+    });
     let renderer_join_report = RendererReport::new(
         RendererReportType::RndrSrvrJoinSession,
         Uuid::new_v4().to_string(),
@@ -850,6 +878,49 @@ async fn bootstrap_remote_presence(
         .await
         .map_err(|err| format!("send bootstrap rndr_srvr_join_session failed: {err}"))?;
 
+    // 2. Send initial StateUpdated report so other devices see our state
+    let state_report_payload = serde_json::json!({
+        "playing_state": PLAYING_STATE_STOPPED,
+        "buffer_state": BUFFER_STATE_OK,
+        "current_position": 0,
+        "duration": 0,
+        "queue_version": {
+            "major": queue_version_ref.major,
+            "minor": queue_version_ref.minor
+        }
+    });
+    let state_report = RendererReport::new(
+        RendererReportType::RndrSrvrStateUpdated,
+        Uuid::new_v4().to_string(),
+        queue_version_ref,
+        state_report_payload,
+    );
+    app.send_renderer_report_command(state_report)
+        .await
+        .map_err(|err| format!("send bootstrap rndr_srvr_state_updated failed: {err}"))?;
+
+    // 3. Report volume and max audio quality
+    let volume_report = RendererReport::new(
+        RendererReportType::RndrSrvrVolumeChanged,
+        Uuid::new_v4().to_string(),
+        queue_version_ref,
+        serde_json::json!({ "volume": 100 }),
+    );
+    app.send_renderer_report_command(volume_report)
+        .await
+        .map_err(|err| format!("send bootstrap rndr_srvr_volume_changed failed: {err}"))?;
+
+    let max_quality_report = RendererReport::new(
+        RendererReportType::RndrSrvrMaxAudioQualityChanged,
+        Uuid::new_v4().to_string(),
+        queue_version_ref,
+        serde_json::json!({ "max_audio_quality": AUDIO_QUALITY_HIRES_LEVEL2 }),
+    );
+    app.send_renderer_report_command(max_quality_report)
+        .await
+        .map_err(|err| format!("send bootstrap rndr_srvr_max_audio_quality_changed failed: {err}"))?;
+
+    // 4. Controller JoinSession to also participate as controller
     let join_payload = serde_json::to_value(QconnectJoinSessionRequest {
         session_uuid: None,
         device_info: Some(device_info),
@@ -862,11 +933,24 @@ async fn bootstrap_remote_presence(
     let join_action_uuid = app
         .send_queue_command(join_command)
         .await
-        .map_err(|err| format!("send bootstrap join_session failed: {err}"))?;
+        .map_err(|err| format!("send bootstrap ctrl_srvr_join_session failed: {err}"))?;
 
     // JoinSession typically responds with session/renderer controller events that are not part of
     // queue reducer correlation. Drop pending slot so queue operations are not blocked for 10s.
     clear_pending_if_matches(app, &join_action_uuid).await;
+
+    // 5. Ask for current queue state from server
+    let ask_queue_payload = serde_json::json!({});
+    let ask_queue_command = app
+        .build_queue_command(QueueCommandType::CtrlSrvrAskForQueueState, ask_queue_payload)
+        .await;
+    let ask_action_uuid = app
+        .send_queue_command(ask_queue_command)
+        .await
+        .map_err(|err| format!("send bootstrap ask_for_queue_state failed: {err}"))?;
+    clear_pending_if_matches(app, &ask_action_uuid).await;
+
+    log::info!("[QConnect] Bootstrap complete: renderer joined with is_active=true, initial state reported, controller joined, queue state requested");
 
     Ok(())
 }
@@ -921,6 +1005,11 @@ fn default_qconnect_device_info() -> QconnectDeviceInfoPayload {
         model: Some(model),
         serial_number: None,
         device_type: Some(device_type),
+        capabilities: Some(QconnectDeviceCapabilitiesPayload {
+            min_audio_quality: Some(AUDIO_QUALITY_MP3),
+            max_audio_quality: Some(AUDIO_QUALITY_HIRES_LEVEL2),
+            volume_remote_control: Some(VOLUME_REMOTE_CONTROL_ALLOWED),
+        }),
         software_version: Some(software_version),
     }
 }
@@ -1230,7 +1319,8 @@ async fn resolve_transport_config(
             .collect();
         parse_subscribe_channels(channels)?
     } else {
-        Vec::new()
+        // Default QConnect channels: connectionId(0x01), backend(0x02), controllers(0x03)
+        vec![vec![0x01], vec![0x02], vec![0x03]]
     };
 
     let mut config = WsTransportConfig::default();
