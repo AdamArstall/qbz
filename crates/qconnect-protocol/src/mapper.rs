@@ -158,7 +158,7 @@ fn map_queue_command(command: &QueueCommand) -> Result<QConnectMessage, Protocol
             ..Default::default()
         }),
         QueueCommandType::CtrlSrvrQueueAddTracks => {
-            let track_ids = required_i32_list(&command.payload, "track_ids")?;
+            let track_ids = required_u32_list(&command.payload, "track_ids")?;
             let shuffle_seed = optional_i32(&command.payload, "shuffle_seed")?.map(|v| v as u32);
             let context_uuid = optional_uuid_bytes(&command.payload, &["context_uuid"])?;
             let autoplay_reset = optional_bool(&command.payload, "autoplay_reset", false);
@@ -180,7 +180,7 @@ fn map_queue_command(command: &QueueCommand) -> Result<QConnectMessage, Protocol
             })
         }
         QueueCommandType::CtrlSrvrQueueLoadTracks => {
-            let track_ids = required_i32_list(&command.payload, "track_ids")?;
+            let track_ids = required_u32_list(&command.payload, "track_ids")?;
             let queue_position = optional_i32(&command.payload, "queue_position")?;
             let shuffle_seed = optional_i32(&command.payload, "shuffle_seed")?.map(|v| v as u32);
             let shuffle_pivot_index = optional_i32(&command.payload, "shuffle_pivot_index")?;
@@ -208,7 +208,7 @@ fn map_queue_command(command: &QueueCommand) -> Result<QConnectMessage, Protocol
             })
         }
         QueueCommandType::CtrlSrvrQueueInsertTracks => {
-            let track_ids = required_i32_list(&command.payload, "track_ids")?;
+            let track_ids = required_u32_list(&command.payload, "track_ids")?;
             let insert_after = optional_i32(&command.payload, "insert_after")?;
             let shuffle_seed = optional_i32(&command.payload, "shuffle_seed")?.map(|v| v as u32);
             let context_uuid = optional_uuid_bytes(&command.payload, &["context_uuid"])?;
@@ -325,7 +325,7 @@ fn map_queue_command(command: &QueueCommand) -> Result<QConnectMessage, Protocol
             })
         }
         QueueCommandType::CtrlSrvrAutoplayLoadTracks => {
-            let track_ids = required_i32_list(&command.payload, "track_ids")?;
+            let track_ids = required_u32_list(&command.payload, "track_ids")?;
             let context_uuid = optional_uuid_bytes(&command.payload, &["context_uuid"])?;
 
             Ok(QConnectMessage {
@@ -532,6 +532,31 @@ fn required_i32_list(payload: &Value, key: &str) -> Result<Vec<i32>, ProtocolErr
                     ProtocolError::InvalidPayload(format!("field '{key}[{idx}]' is not numeric"))
                 })?;
             to_i32_from_i64(raw, &format!("{key}[{idx}]"))
+        })
+        .collect()
+}
+
+fn required_u32_list(payload: &Value, key: &str) -> Result<Vec<u32>, ProtocolError> {
+    let values = payload
+        .get(key)
+        .and_then(Value::as_array)
+        .ok_or_else(|| ProtocolError::InvalidPayload(format!("missing array field '{key}'")))?;
+
+    values
+        .iter()
+        .enumerate()
+        .map(|(idx, value)| {
+            let raw = value
+                .as_i64()
+                .or_else(|| value.as_u64().map(|v| v as i64))
+                .ok_or_else(|| {
+                    ProtocolError::InvalidPayload(format!("field '{key}[{idx}]' is not numeric"))
+                })?;
+            u32::try_from(raw).map_err(|_| {
+                ProtocolError::InvalidPayload(format!(
+                    "field '{key}[{idx}]' value {raw} out of u32 range"
+                ))
+            })
         })
         .collect()
 }

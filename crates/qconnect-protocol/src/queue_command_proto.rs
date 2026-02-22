@@ -229,8 +229,8 @@ pub struct QueueLoadTracksMessage {
     pub queue_version_ref: Option<QueueVersionRef>,
     #[prost(bytes = "vec", optional, tag = "2")]
     pub action_uuid: Option<Vec<u8>>,
-    #[prost(int32, repeated, packed = "false", tag = "3")]
-    pub track_ids: Vec<i32>,
+    #[prost(fixed32, repeated, tag = "3")]
+    pub track_ids: Vec<u32>,
     #[prost(int32, optional, tag = "4")]
     pub queue_position: Option<i32>,
     #[prost(fixed32, optional, tag = "5")]
@@ -253,8 +253,8 @@ pub struct QueueInsertTracksMessage {
     pub queue_version_ref: Option<QueueVersionRef>,
     #[prost(bytes = "vec", optional, tag = "2")]
     pub action_uuid: Option<Vec<u8>>,
-    #[prost(int32, repeated, packed = "false", tag = "3")]
-    pub track_ids: Vec<i32>,
+    #[prost(fixed32, repeated, tag = "3")]
+    pub track_ids: Vec<u32>,
     #[prost(int32, optional, tag = "4")]
     pub insert_after: Option<i32>,
     #[prost(fixed32, optional, tag = "5")]
@@ -273,8 +273,8 @@ pub struct QueueAddTracksMessage {
     pub queue_version_ref: Option<QueueVersionRef>,
     #[prost(bytes = "vec", optional, tag = "2")]
     pub action_uuid: Option<Vec<u8>>,
-    #[prost(int32, repeated, packed = "false", tag = "3")]
-    pub track_ids: Vec<i32>,
+    #[prost(fixed32, repeated, tag = "3")]
+    pub track_ids: Vec<u32>,
     #[prost(fixed32, optional, tag = "4")]
     pub shuffle_seed: Option<u32>,
     #[prost(bytes = "vec", optional, tag = "5")]
@@ -353,8 +353,8 @@ pub struct AutoplayLoadTracksMessage {
     pub queue_version_ref: Option<QueueVersionRef>,
     #[prost(bytes = "vec", optional, tag = "2")]
     pub action_uuid: Option<Vec<u8>>,
-    #[prost(int32, repeated, packed = "false", tag = "3")]
-    pub track_ids: Vec<i32>,
+    #[prost(fixed32, repeated, tag = "3")]
+    pub track_ids: Vec<u32>,
     #[prost(bytes = "vec", optional, tag = "4")]
     pub context_uuid: Option<Vec<u8>>,
 }
