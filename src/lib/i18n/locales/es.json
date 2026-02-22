@@ -1811,7 +1811,20 @@
     "streamNotEligible": "Esta pista no es elegible para la cola de Qobuz Connect.",
     "remoteQueuedNext": "Agregada para reproducir a continuacion en Qobuz Connect.",
     "remoteQueuedLater": "Agregada a la cola de Qobuz Connect.",
-    "remoteQueueFailed": "No se pudo actualizar la cola de Qobuz Connect."
+    "remoteQueueFailed": "No se pudo actualizar la cola de Qobuz Connect.",
+    "sessionTitle": "Sesion",
+    "sessionUuid": "UUID de sesion",
+    "activeRenderer": "Renderer activo",
+    "renderersLabel": "Renderers",
+    "noRenderers": "Sin renderers",
+    "controllerTitle": "Controlador",
+    "play": "Reproducir",
+    "pause": "Pausar",
+    "stop": "Detener",
+    "muteLabel": "Silenciar",
+    "unmuteLabel": "Activar sonido",
+    "setActiveRenderer": "Establecer como activo",
+    "thisDevice": "Este dispositivo"
   },
   "radio": {
     "albumRadio": "Radio del Album",

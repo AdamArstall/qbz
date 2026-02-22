@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { invoke } from '@tauri-apps/api/core';
   import { writeText } from '@tauri-apps/plugin-clipboard-manager';
-  import { Bug, Circle, Copy, Power, Trash2 } from 'lucide-svelte';
+  import { Bug, Circle, Copy, Pause, Play, Power, Square, Trash2, Volume2, VolumeX } from 'lucide-svelte';
   import Modal from '$lib/components/Modal.svelte';
   import { t } from '$lib/i18n';
   import { showToast } from '$lib/stores/toastStore';
@@ -26,6 +27,20 @@
     muted?: boolean | null;
   }
 
+  interface QconnectRendererInfo {
+    renderer_id: number;
+    friendly_name?: string | null;
+    brand?: string | null;
+    model?: string | null;
+    device_type?: number | null;
+  }
+
+  interface QconnectSessionSnapshot {
+    session_uuid?: string | null;
+    active_renderer_id?: number | null;
+    renderers: QconnectRendererInfo[];
+  }
+
   interface QconnectDiagnosticsEntry {
     ts: number;
     level: 'info' | 'warn' | 'error';
@@ -41,6 +56,7 @@
     onToggleConnection: () => void | Promise<void>;
     queueSnapshot?: QconnectQueueSnapshot | null;
     rendererSnapshot?: QconnectRendererSnapshot | null;
+    sessionSnapshot?: QconnectSessionSnapshot | null;
     showDevDiagnostics?: boolean;
     diagnosticsLogs?: QconnectDiagnosticsEntry[];
     onClearDiagnostics?: () => void;
@@ -54,12 +70,14 @@
     onToggleConnection,
     queueSnapshot = null,
     rendererSnapshot = null,
+    sessionSnapshot = null,
     showDevDiagnostics = false,
     diagnosticsLogs = [],
     onClearDiagnostics
   }: Props = $props();
 
   let diagnosticsExpanded = $state(false);
+  let controllerBusy = $state(false);
 
   function statusKey(): string {
     return status.transport_connected ? 'qconnect.statusConnected' : 'qconnect.statusDisconnected';
@@ -72,6 +90,96 @@
   function safeValue(value: string | number | boolean | null | undefined): string {
     if (value === null || value === undefined || value === '') return $t('qconnect.notAvailable');
     return String(value);
+  }
+
+  function playingStateLabel(state: number | null | undefined): string {
+    if (state === null || state === undefined) return $t('qconnect.notAvailable');
+    if (state === 1) return 'Stopped';
+    if (state === 2) return 'Playing';
+    if (state === 3) return 'Paused';
+    return String(state);
+  }
+
+  function rendererDisplayName(renderer: QconnectRendererInfo): string {
+    if (renderer.friendly_name) return renderer.friendly_name;
+    const parts: string[] = [];
+    if (renderer.brand) parts.push(renderer.brand);
+    if (renderer.model) parts.push(renderer.model);
+    return parts.length > 0 ? parts.join(' ') : `Renderer #${renderer.renderer_id}`;
+  }
+
+  async function sendControllerPlay(): Promise<void> {
+    controllerBusy = true;
+    try {
+      await invoke('v2_qconnect_set_player_state', {
+        request: { playing_state: 2 }
+      });
+    } catch (err) {
+      console.warn('[QconnectPanel] set_player_state(play) failed:', err);
+    } finally {
+      controllerBusy = false;
+    }
+  }
+
+  async function sendControllerPause(): Promise<void> {
+    controllerBusy = true;
+    try {
+      await invoke('v2_qconnect_set_player_state', {
+        request: { playing_state: 3 }
+      });
+    } catch (err) {
+      console.warn('[QconnectPanel] set_player_state(pause) failed:', err);
+    } finally {
+      controllerBusy = false;
+    }
+  }
+
+  async function sendControllerStop(): Promise<void> {
+    controllerBusy = true;
+    try {
+      await invoke('v2_qconnect_set_player_state', {
+        request: { playing_state: 1 }
+      });
+    } catch (err) {
+      console.warn('[QconnectPanel] set_player_state(stop) failed:', err);
+    } finally {
+      controllerBusy = false;
+    }
+  }
+
+  async function sendControllerVolume(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const vol = parseInt(input.value, 10);
+    try {
+      await invoke('v2_qconnect_set_volume', {
+        request: { volume: vol }
+      });
+    } catch (err) {
+      console.warn('[QconnectPanel] set_volume failed:', err);
+    }
+  }
+
+  async function sendControllerMute(mute: boolean): Promise<void> {
+    try {
+      await invoke('v2_qconnect_mute_volume', {
+        request: { value: mute }
+      });
+    } catch (err) {
+      console.warn('[QconnectPanel] mute_volume failed:', err);
+    }
+  }
+
+  async function sendSetActiveRenderer(rendererId: number): Promise<void> {
+    controllerBusy = true;
+    try {
+      await invoke('v2_qconnect_set_active_renderer', {
+        request: { renderer_id: rendererId }
+      });
+    } catch (err) {
+      console.warn('[QconnectPanel] set_active_renderer failed:', err);
+    } finally {
+      controllerBusy = false;
+    }
   }
 
   async function copyDiagnostics(): Promise<void> {
@@ -113,6 +221,115 @@
       </div>
     </section>
 
+    {#if status.transport_connected && sessionSnapshot}
+      <section class="session-card">
+        <h4>{$t('qconnect.sessionTitle')}</h4>
+        <div class="runtime-line">
+          <span>{$t('qconnect.activeRenderer')}</span>
+          <strong>
+            {#if sessionSnapshot.active_renderer_id != null}
+              {@const activeRndr = sessionSnapshot.renderers.find(
+                (r) => r.renderer_id === sessionSnapshot.active_renderer_id
+              )}
+              {activeRndr ? rendererDisplayName(activeRndr) : `#${sessionSnapshot.active_renderer_id}`}
+            {:else}
+              {$t('qconnect.notAvailable')}
+            {/if}
+          </strong>
+        </div>
+        <div class="runtime-line">
+          <span>{$t('qconnect.renderersLabel')}</span>
+          <strong>{sessionSnapshot.renderers.length}</strong>
+        </div>
+
+        {#if sessionSnapshot.renderers.length > 0}
+          <div class="renderer-list">
+            {#each sessionSnapshot.renderers as renderer (renderer.renderer_id)}
+              <div
+                class="renderer-item"
+                class:active={renderer.renderer_id === sessionSnapshot.active_renderer_id}
+              >
+                <div class="renderer-info">
+                  <Circle
+                    size={8}
+                    class={renderer.renderer_id === sessionSnapshot.active_renderer_id
+                      ? 'renderer-dot active'
+                      : 'renderer-dot'}
+                  />
+                  <span class="renderer-name">{rendererDisplayName(renderer)}</span>
+                </div>
+                {#if renderer.renderer_id !== sessionSnapshot.active_renderer_id}
+                  <button
+                    class="mini-btn"
+                    onclick={() => sendSetActiveRenderer(renderer.renderer_id)}
+                    disabled={controllerBusy}
+                  >
+                    {$t('qconnect.setActiveRenderer')}
+                  </button>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="no-renderers">{$t('qconnect.noRenderers')}</p>
+        {/if}
+      </section>
+
+      <section class="controller-card">
+        <h4>{$t('qconnect.controllerTitle')}</h4>
+
+        <div class="controller-transport">
+          <button
+            class="ctrl-btn"
+            onclick={sendControllerPlay}
+            disabled={controllerBusy}
+            title={$t('qconnect.play')}
+          >
+            <Play size={16} />
+          </button>
+          <button
+            class="ctrl-btn"
+            onclick={sendControllerPause}
+            disabled={controllerBusy}
+            title={$t('qconnect.pause')}
+          >
+            <Pause size={16} />
+          </button>
+          <button
+            class="ctrl-btn"
+            onclick={sendControllerStop}
+            disabled={controllerBusy}
+            title={$t('qconnect.stop')}
+          >
+            <Square size={14} />
+          </button>
+        </div>
+
+        <div class="controller-volume">
+          <button
+            class="ctrl-btn small"
+            onclick={() => sendControllerMute(!(rendererSnapshot?.muted ?? false))}
+            title={rendererSnapshot?.muted ? $t('qconnect.unmuteLabel') : $t('qconnect.muteLabel')}
+          >
+            {#if rendererSnapshot?.muted}
+              <VolumeX size={14} />
+            {:else}
+              <Volume2 size={14} />
+            {/if}
+          </button>
+          <input
+            type="range"
+            class="volume-slider"
+            min="0"
+            max="100"
+            value={rendererSnapshot?.volume ?? 50}
+            onchange={sendControllerVolume}
+          />
+          <span class="volume-value">{rendererSnapshot?.volume ?? '—'}</span>
+        </div>
+      </section>
+    {/if}
+
     <section class="runtime-grid">
       <div class="runtime-card">
         <h4>{$t('qconnect.queueStateTitle')}</h4>
@@ -144,7 +361,7 @@
         <h4>{$t('qconnect.rendererStateTitle')}</h4>
         <div class="runtime-line">
           <span>{$t('qconnect.playingStateLabel')}</span>
-          <strong>{rendererSnapshot ? safeValue(rendererSnapshot.playing_state) : $t('qconnect.notAvailable')}</strong>
+          <strong>{rendererSnapshot ? playingStateLabel(rendererSnapshot.playing_state) : $t('qconnect.notAvailable')}</strong>
         </div>
         <div class="runtime-line">
           <span>{$t('qconnect.volumeLabel')}</span>
@@ -211,7 +428,9 @@
 
   .status-card,
   .runtime-card,
-  .diagnostics-card {
+  .diagnostics-card,
+  .session-card,
+  .controller-card {
     border: 1px solid var(--bg-tertiary);
     border-radius: 10px;
     background: var(--bg-secondary);
@@ -274,6 +493,136 @@
     line-height: 1.4;
   }
 
+  /* Session card */
+  .session-card,
+  .controller-card {
+    padding: 12px;
+  }
+
+  .session-card h4,
+  .controller-card h4 {
+    margin: 0 0 10px 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-primary);
+  }
+
+  .session-card h4::before,
+  .controller-card h4::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--accent-primary, #6366f1);
+    opacity: 0.8;
+  }
+
+  .renderer-list {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .renderer-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .renderer-item.active {
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--text-primary);
+  }
+
+  .renderer-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .renderer-name {
+    font-weight: 500;
+  }
+
+  :global(.renderer-dot) {
+    color: var(--text-muted);
+    fill: currentColor;
+  }
+
+  :global(.renderer-dot.active) {
+    color: #22c55e;
+    fill: currentColor;
+  }
+
+  .no-renderers {
+    margin: 6px 0 0 0;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  /* Controller card */
+  .controller-transport {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .ctrl-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .ctrl-btn:hover:not(:disabled) {
+    background: var(--bg-hover, rgba(255, 255, 255, 0.08));
+  }
+
+  .ctrl-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .ctrl-btn.small {
+    padding: 6px 8px;
+  }
+
+  .controller-volume {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .volume-slider {
+    flex: 1;
+    height: 4px;
+    accent-color: var(--accent-primary, #6366f1);
+    cursor: pointer;
+  }
+
+  .volume-value {
+    min-width: 28px;
+    text-align: right;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: var(--font-mono, monospace);
+  }
+
+  /* Runtime grid */
   .runtime-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

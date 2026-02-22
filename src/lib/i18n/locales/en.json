@@ -1811,7 +1811,20 @@
     "streamNotEligible": "This track is not eligible for Qobuz Connect queue.",
     "remoteQueuedNext": "Queued on Qobuz Connect to play next.",
     "remoteQueuedLater": "Added to Qobuz Connect queue.",
-    "remoteQueueFailed": "Failed to update Qobuz Connect queue."
+    "remoteQueueFailed": "Failed to update Qobuz Connect queue.",
+    "sessionTitle": "Session",
+    "sessionUuid": "Session UUID",
+    "activeRenderer": "Active renderer",
+    "renderersLabel": "Renderers",
+    "noRenderers": "No renderers",
+    "controllerTitle": "Controller",
+    "play": "Play",
+    "pause": "Pause",
+    "stop": "Stop",
+    "muteLabel": "Mute",
+    "unmuteLabel": "Unmute",
+    "setActiveRenderer": "Set as active",
+    "thisDevice": "This device"
   },
   "radio": {
     "albumRadio": "Album Radio",

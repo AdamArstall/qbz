@@ -216,6 +216,18 @@
     muted?: boolean | null;
   };
 
+  type QconnectSessionSnapshot = {
+    session_uuid?: string | null;
+    active_renderer_id?: number | null;
+    renderers: Array<{
+      renderer_id: number;
+      friendly_name?: string | null;
+      brand?: string | null;
+      model?: string | null;
+      device_type?: number | null;
+    }>;
+  };
+
   type QconnectAdmissionBlockedEvent = {
     command_type: string;
     origin: string;
@@ -619,6 +631,7 @@
   });
   let qobuzConnectQueueSnapshot = $state<QconnectQueueSnapshot | null>(null);
   let qobuzConnectRendererSnapshot = $state<QconnectRendererSnapshot | null>(null);
+  let qobuzConnectSessionSnapshot = $state<QconnectSessionSnapshot | null>(null);
   let qobuzConnectDiagnosticsLogs = $state<QconnectDiagnosticsEntry[]>([]);
   const showQconnectDevDiagnostics = import.meta.env.DEV;
   const QCONNECT_DIAGNOSTIC_LOG_LIMIT = 200;
@@ -773,16 +786,19 @@
     if (!isQobuzConnectConnected) {
       qobuzConnectQueueSnapshot = null;
       qobuzConnectRendererSnapshot = null;
+      qobuzConnectSessionSnapshot = null;
       return;
     }
 
     try {
-      const [queueSnapshot, rendererSnapshot] = await Promise.all([
+      const [queueSnapshot, rendererSnapshot, sessionSnapshot] = await Promise.all([
         invoke<QconnectQueueSnapshot>('v2_qconnect_queue_snapshot'),
-        invoke<QconnectRendererSnapshot>('v2_qconnect_renderer_snapshot')
+        invoke<QconnectRendererSnapshot>('v2_qconnect_renderer_snapshot'),
+        invoke<QconnectSessionSnapshot>('v2_qconnect_session_snapshot'),
       ]);
       qobuzConnectQueueSnapshot = queueSnapshot;
       qobuzConnectRendererSnapshot = rendererSnapshot;
+      qobuzConnectSessionSnapshot = sessionSnapshot;
     } catch (err) {
       pushQobuzConnectDiagnostic('snapshot', 'warn', err);
     }
@@ -4770,6 +4786,7 @@
       onToggleConnection={handleQobuzConnectButton}
       queueSnapshot={qobuzConnectQueueSnapshot}
       rendererSnapshot={qobuzConnectRendererSnapshot}
+      sessionSnapshot={qobuzConnectSessionSnapshot}
       showDevDiagnostics={showQconnectDevDiagnostics}
       diagnosticsLogs={qobuzConnectDiagnosticsLogs}
       onClearDiagnostics={clearQobuzConnectDiagnostics}
