@@ -300,7 +300,8 @@
     handleAddToFavorites,
     addToPlaylist,
     shareQobuzTrackLink,
-    shareSonglinkTrack
+    shareSonglinkTrack,
+    loadQconnectQueue
   } from '$lib/services/trackActions';
 
   // Internationalization
@@ -1256,6 +1257,11 @@
     }));
 
     await setQueue(queueTracks, 0, true);
+
+    // Sync the full queue to QConnect remote so controllers see the album
+    const trackIds = album.tracks.map(trk => trk.id);
+    void loadQconnectQueue(trackIds, 0);
+
     const firstTrack = album.tracks[0];
     const quality = firstTrack.hires && firstTrack.bitDepth && firstTrack.samplingRate
       ? `${firstTrack.bitDepth}bit/${firstTrack.samplingRate}kHz`
@@ -1471,6 +1477,10 @@
     }));
 
     await setQueue(queueTracks, 0);
+
+    // Sync the full queue to QConnect remote so controllers see the playlist
+    const trackIds = tracks.map(trk => trk.id);
+    void loadQconnectQueue(trackIds, 0);
 
     const firstTrack = tracks[0];
     const artwork = firstTrack.album?.image?.large || firstTrack.album?.image?.thumbnail || firstTrack.album?.image?.small || '';

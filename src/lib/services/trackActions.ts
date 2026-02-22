@@ -52,7 +52,7 @@ type QconnectAdmissionResult = {
   handoff_intent: 'continue_locally' | 'send_to_connect';
 };
 
-type QconnectQueueCommandType = 'queue_add_tracks' | 'queue_insert_tracks';
+type QconnectQueueCommandType = 'queue_add_tracks' | 'queue_insert_tracks' | 'queue_load_tracks';
 type QueueTrackActionOptions = {
   silent?: boolean;
 };
@@ -396,6 +396,54 @@ export async function queueTrackLater(
     showToast('Failed to add to queue', 'error');
   }
   return success;
+}
+
+// ============ QConnect Full Queue Load ============
+
+/**
+ * Replace the remote QConnect queue with a full set of track IDs.
+ * Used when starting playback of an album or playlist from QBZ,
+ * so the remote controllers see the same queue.
+ *
+ * @param trackIds Array of Qobuz track IDs to load
+ * @param startIndex Index of the track to start playing (0-based)
+ * @param shuffleMode Whether to enable shuffle on the remote
+ * @returns true if the remote queue was loaded, false if not connected or rejected
+ */
+export async function loadQconnectQueue(
+  trackIds: number[],
+  startIndex: number = 0,
+  shuffleMode: boolean = false
+): Promise<boolean> {
+  const qconnectConnected = await isQconnectConnected();
+  if (!qconnectConnected) return false;
+
+  const origin: QconnectTrackOrigin = 'qobuz_online';
+  const admission = await evaluateQconnectAdmission(origin);
+  console.log('[QConnect/LoadQueue] admission=%o trackCount=%d startIndex=%d', admission, trackIds.length, startIndex);
+
+  if (!admission?.accepted) {
+    console.warn('[QConnect/LoadQueue] admission rejected: reason=%s', admission?.reason);
+    return false;
+  }
+
+  try {
+    const payload = {
+      track_ids: trackIds,
+      queue_position: startIndex,
+      shuffle_mode: shuffleMode,
+      context_uuid: crypto.randomUUID(),
+      autoplay_reset: true,
+      autoplay_loading: true
+    };
+    console.log('[QConnect/LoadQueue] sending queue_load_tracks');
+    await sendQconnectQueueCommandWithAdmission('queue_load_tracks', origin, payload);
+    console.log('[QConnect/LoadQueue] SUCCESS');
+    return true;
+  } catch (err) {
+    console.error('[QConnect/LoadQueue] FAILED:', err);
+    return false;
+  }
 }
 
 // ============ Convenience Queue Functions ============
