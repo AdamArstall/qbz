@@ -3743,17 +3743,21 @@
           if ('TransportConnected' in payload) {
             console.log('[QConnect] TransportConnected detected, checking if local queue should be pushed');
             if (isPlaying && currentTrack) {
-              const queueState = getQueueState();
-              const trackIds = queueState.queue
-                .map(item => item.trackId)
-                .filter((id): id is number => typeof id === 'number' && id > 0);
-              if (trackIds.length > 0) {
-                console.log('[QConnect] Pushing local queue to remote on connect (%d tracks)', trackIds.length);
-                loadQconnectQueue(trackIds, 0).then(ok => {
-                  if (ok) console.log('[QConnect] Local queue pushed to remote on connect');
-                  else console.warn('[QConnect] Local queue NOT pushed on connect (rejected or failed)');
-                }).catch(err => console.error('[QConnect] Local queue push on connect error:', err));
-              }
+              // Delay briefly so the QConnect session setup (ask_for_queue_state etc.)
+              // completes before we try to push our queue.
+              setTimeout(() => {
+                const queueState = getQueueState();
+                const trackIds = queueState.queue
+                  .map(item => item.trackId ?? parseInt(item.id))
+                  .filter((id): id is number => typeof id === 'number' && !isNaN(id) && id > 0);
+                if (trackIds.length > 0) {
+                  console.log('[QConnect] Pushing local queue to remote on connect (%d tracks)', trackIds.length);
+                  loadQconnectQueue(trackIds, 0).then(ok => {
+                    if (ok) console.log('[QConnect] Local queue pushed to remote on connect');
+                    else console.warn('[QConnect] Local queue NOT pushed on connect (rejected or failed)');
+                  }).catch(err => console.error('[QConnect] Local queue push on connect error:', err));
+                }
+              }, 2000);
             }
           }
 
