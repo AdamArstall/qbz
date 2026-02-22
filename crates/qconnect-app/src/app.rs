@@ -416,10 +416,25 @@ where
     ) -> Result<(), QconnectAppError> {
         match command {
             RendererCommand::SetState { .. } => {
+                log::info!(
+                    "[QConnect/Report] SetState report: playing={:?} pos={:?} track={:?} next={:?} qv={}.{}",
+                    renderer.playing_state,
+                    renderer.current_position_ms,
+                    renderer.current_track.as_ref().map(|t| (t.track_id, t.queue_item_id)),
+                    renderer.next_track.as_ref().map(|t| (t.track_id, t.queue_item_id)),
+                    queue_version_ref.major,
+                    queue_version_ref.minor
+                );
                 let report = RendererReport::new(
                     RendererReportType::RndrSrvrStateUpdated,
                     self.next_action_uuid(),
                     queue_version_ref,
+                    // NOTE: We intentionally OMIT current_queue_item_id and next_queue_item_id.
+                    // The server validates these IDs against its queue state and rejects reports
+                    // when IDs don't match ("Current track not found in queue nor autoplay").
+                    // This happens after QBZ-initiated queue loads where the server assigns
+                    // non-standard queue_item_ids (first track = track_id, rest = 1..N).
+                    // The server already knows the current track from SET_STATE commands.
                     serde_json::json!({
                         "playing_state": renderer.playing_state,
                         "buffer_state": infer_buffer_state(renderer.playing_state),
@@ -429,8 +444,8 @@ where
                             "major": queue_version_ref.major,
                             "minor": queue_version_ref.minor
                         },
-                        "current_queue_item_id": renderer.current_track.as_ref().map(|item| item.queue_item_id),
-                        "next_queue_item_id": renderer.next_track.as_ref().map(|item| item.queue_item_id)
+                        "current_queue_item_id": Option::<i32>::None,
+                        "next_queue_item_id": Option::<i32>::None
                     }),
                 );
                 self.send_renderer_report(report).await?;

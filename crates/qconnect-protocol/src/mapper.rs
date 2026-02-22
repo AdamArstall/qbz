@@ -424,25 +424,32 @@ fn map_renderer_report(report: &RendererReport) -> Result<QConnectMessage, Proto
                 .unwrap_or(report.queue_version_ref);
             let current_position = optional_i32(&report.payload, "current_position")?;
             let duration = optional_i32(&report.payload, "duration")?;
+            let current_qid = optional_i32(&report.payload, "current_queue_item_id")?;
+            let next_qid = optional_i32(&report.payload, "next_queue_item_id")?;
+            let playing_state = optional_i32(&report.payload, "playing_state")?;
             let playback_position = current_position.map(|value| PlaybackPositionMessage {
                 timestamp: Some(now_ms()),
                 value: Some(value),
             });
 
+            log::info!(
+                "[QConnect/Proto] Encoding StateUpdated: playing={:?} pos={:?} dur={:?} qid={:?} next_qid={:?} qv={}.{}",
+                playing_state, current_position, duration,
+                current_qid, next_qid,
+                queue_version.major, queue_version.minor
+            );
+
             Ok(QConnectMessage {
                 message_type: Some(QConnectMessageType::MessageTypeRndrSrvrStateUpdated as i32),
                 rndr_srvr_state_updated: Some(RendererStateUpdatedMessage {
                     state: Some(RendererStateMessage {
-                        playing_state: optional_i32(&report.payload, "playing_state")?,
+                        playing_state,
                         buffer_state: optional_i32(&report.payload, "buffer_state")?,
                         current_position: playback_position,
                         duration,
                         queue_version: Some(to_proto_queue_version(queue_version)?),
-                        current_queue_item_id: optional_i32(
-                            &report.payload,
-                            "current_queue_item_id",
-                        )?,
-                        next_queue_item_id: optional_i32(&report.payload, "next_queue_item_id")?,
+                        current_queue_item_id: current_qid,
+                        next_queue_item_id: next_qid,
                     }),
                 }),
                 ..Default::default()

@@ -1723,6 +1723,21 @@ pub async fn v2_qconnect_report_playback_state(
     }
 
     let queue_version = service.get_queue_version().await;
+
+    log::info!(
+        "[QConnect/Report] Periodic state report: playing={} pos={:?} dur={:?} qid={:?} next_qid={:?} track_id={:?} qv={}.{}",
+        playing_state, current_position, duration,
+        resolved_current_qid, resolved_next_qid, current_track_id,
+        queue_version.major, queue_version.minor
+    );
+
+    // NOTE: We intentionally OMIT current_queue_item_id and next_queue_item_id
+    // from periodic state reports. The server validates these IDs against its
+    // queue state and rejects reports when IDs don't match (returns "Current track
+    // not found in queue nor autoplay"). This happens consistently after QBZ-initiated
+    // queue loads where the server assigns non-standard queue_item_ids.
+    // The server already knows the current track from SET_STATE commands and adds
+    // the correct queue_item_id when forwarding to controllers.
     let report = RendererReport::new(
         RendererReportType::RndrSrvrStateUpdated,
         Uuid::new_v4().to_string(),
@@ -1732,8 +1747,8 @@ pub async fn v2_qconnect_report_playback_state(
             "buffer_state": BUFFER_STATE_OK,
             "current_position": current_position,
             "duration": duration,
-            "current_queue_item_id": resolved_current_qid,
-            "next_queue_item_id": resolved_next_qid,
+            "current_queue_item_id": null,
+            "next_queue_item_id": null,
             "queue_version": {
                 "major": queue_version.major,
                 "minor": queue_version.minor
