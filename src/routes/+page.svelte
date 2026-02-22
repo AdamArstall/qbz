@@ -3175,7 +3175,7 @@
       }
     }, 5000);
 
-    // Periodic QConnect position reports (every 5s) so controllers see track progress.
+    // Periodic QConnect position reports (every 2s) so controllers see track progress.
     // Only fires when connected and playing. queue_item_ids auto-filled by backend.
     const qconnectPositionReportInterval = setInterval(() => {
       if (isQobuzConnectConnected && isPlaying && currentTrack) {
@@ -3190,7 +3190,7 @@
           nextQueueItemId: null,
         }).catch(() => {});
       }
-    }, 5000);
+    }, 2000);
 
     // Keyboard navigation
     document.addEventListener('keydown', handleKeydown);

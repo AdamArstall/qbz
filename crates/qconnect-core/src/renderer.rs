@@ -78,10 +78,22 @@ pub fn apply_renderer_command(
             current_track,
             next_track,
         } => {
-            state.playing_state = *playing_state;
-            state.current_position_ms = *current_position_ms;
-            state.current_track = current_track.clone();
-            state.next_track = next_track.clone();
+            // Only overwrite fields when the server provides a value.
+            // Server pause/resume commands send None for position and tracks,
+            // but the renderer should retain the last known values so that
+            // subsequent renderer reports include them correctly.
+            if playing_state.is_some() {
+                state.playing_state = *playing_state;
+            }
+            if current_position_ms.is_some() {
+                state.current_position_ms = *current_position_ms;
+            }
+            if current_track.is_some() {
+                state.current_track = current_track.clone();
+            }
+            if next_track.is_some() {
+                state.next_track = next_track.clone();
+            }
         }
         RendererCommand::SetVolume {
             volume,
@@ -172,5 +184,36 @@ mod tests {
         assert_eq!(state.volume, Some(53));
         assert_eq!(state.volume_delta, Some(8));
         assert_eq!(state.updated_at_ms, 1000);
+    }
+
+    #[test]
+    fn set_state_none_does_not_overwrite_existing_values() {
+        let current_track = QueueItem {
+            track_context_uuid: "ctx-a".to_string(),
+            track_id: 11,
+            queue_item_id: 101,
+        };
+        let mut state = QConnectRendererState {
+            playing_state: Some(2),
+            current_position_ms: Some(30_000),
+            current_track: Some(current_track.clone()),
+            ..Default::default()
+        };
+
+        // Simulate a server pause command that sends None for position/tracks
+        apply_renderer_command(
+            &mut state,
+            &RendererCommand::SetState {
+                playing_state: Some(3),
+                current_position_ms: None,
+                current_track: None,
+                next_track: None,
+            },
+            1500,
+        );
+
+        assert_eq!(state.playing_state, Some(3)); // updated
+        assert_eq!(state.current_position_ms, Some(30_000)); // retained
+        assert_eq!(state.current_track, Some(current_track)); // retained
     }
 }

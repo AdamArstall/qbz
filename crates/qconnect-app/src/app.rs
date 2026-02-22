@@ -154,6 +154,14 @@ where
         self.send_renderer_report(report).await
     }
 
+    /// Update the renderer state's position from the frontend's playback position.
+    /// This keeps the internal state in sync with the actual audio playback, so that
+    /// renderer reports triggered by server commands (pause/resume) include the real position.
+    pub async fn update_renderer_position(&self, position_ms: u64) {
+        let mut state = self.state.lock().await;
+        state.renderer.current_position_ms = Some(position_ms);
+    }
+
     pub async fn handle_transport_event(
         &self,
         event: TransportEvent,

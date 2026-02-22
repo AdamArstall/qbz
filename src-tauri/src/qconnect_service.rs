@@ -748,6 +748,16 @@ impl QconnectServiceState {
             .map_err(|err| format!("send renderer report failed: {err}"))
     }
 
+    /// Update the renderer's internal position from the frontend's actual playback position.
+    /// This keeps the QConnect app's renderer state in sync with audio playback so that
+    /// subsequent renderer reports (e.g. after pause/resume) include the correct position.
+    pub async fn update_renderer_position(&self, position_ms: u64) {
+        let guard = self.inner.lock().await;
+        if let Some(runtime) = &guard.runtime {
+            runtime.app.update_renderer_position(position_ms).await;
+        }
+    }
+
     pub async fn is_active(&self) -> bool {
         let guard = self.inner.lock().await;
         guard.runtime.is_some()
@@ -1675,6 +1685,15 @@ pub async fn v2_qconnect_report_playback_state(
 
     if let Err(err) = service.send_renderer_report(report).await {
         log::warn!("[QConnect] Failed to report playback state: {err}");
+    }
+
+    // Keep the QConnect app's renderer position in sync with the actual playback position.
+    // This ensures renderer reports triggered by server commands (pause/resume/next)
+    // include the real position instead of a stale value.
+    if let Some(pos) = current_position {
+        if pos >= 0 {
+            service.update_renderer_position(pos as u64).await;
+        }
     }
 
     Ok(())
