@@ -857,10 +857,13 @@
   let albumsContainerHeight = $state(0);
   let albumsContainerWidth = $state(0);
   let albumsResizeObs: ResizeObserver | null = null;
+  let lastKnownAlbumCols = 1;
 
   let albumGridCols = $derived.by(() => {
-    if (albumsContainerWidth === 0) return 1;
-    return Math.max(1, Math.floor((albumsContainerWidth + ALBUM_GAP_X) / (ALBUM_CARD_WIDTH + ALBUM_GAP_X)));
+    if (albumsContainerWidth === 0) return lastKnownAlbumCols;
+    const cols = Math.max(1, Math.floor((albumsContainerWidth + ALBUM_GAP_X) / (ALBUM_CARD_WIDTH + ALBUM_GAP_X)));
+    lastKnownAlbumCols = cols;
+    return cols;
   });
 
   interface AlbumVirtualRow {
@@ -984,10 +987,13 @@
   let artistsContainerHeight = $state(0);
   let artistsContainerWidth = $state(0);
   let artistsResizeObs: ResizeObserver | null = null;
+  let lastKnownArtistCols = 1;
 
   let artistGridCols = $derived.by(() => {
-    if (artistsContainerWidth === 0) return 1;
-    return Math.max(1, Math.floor((artistsContainerWidth + ARTIST_GAP) / (ARTIST_CARD_WIDTH + ARTIST_GAP)));
+    if (artistsContainerWidth === 0) return lastKnownArtistCols;
+    const cols = Math.max(1, Math.floor((artistsContainerWidth + ARTIST_GAP) / (ARTIST_CARD_WIDTH + ARTIST_GAP)));
+    lastKnownArtistCols = cols;
+    return cols;
   });
 
   interface ArtistVirtualRow {
@@ -1055,7 +1061,8 @@
       artistsContainerHeight = viewportH;
     }
 
-    if (albumsVirtualEl && !albumsResizeObs) {
+    if (albumsVirtualEl) {
+      albumsResizeObs?.disconnect();
       albumsContainerWidth = albumsVirtualEl.clientWidth;
       albumsResizeObs = new ResizeObserver((entries) => {
         for (const entry of entries) {
@@ -1064,7 +1071,8 @@
       });
       albumsResizeObs.observe(albumsVirtualEl);
     }
-    if (artistsVirtualEl && !artistsResizeObs) {
+    if (artistsVirtualEl) {
+      artistsResizeObs?.disconnect();
       artistsContainerWidth = artistsVirtualEl.clientWidth;
       artistsResizeObs = new ResizeObserver((entries) => {
         for (const entry of entries) {
