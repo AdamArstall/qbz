@@ -1034,11 +1034,10 @@ pub fn run() {
 
                     log::info!("DLNA connection will be cleaned up on drop");
 
-                    // Do not manually close secondary webview windows during teardown.
-                    // Trigger a single process-level exit and let Tauri/WebKit own
-                    // window destruction order to avoid WebKit EGL/TLS shutdown races.
-                    api.prevent_close();
-                    window.app_handle().exit(0);
+                    // Allow Tauri's normal close flow for the main window.
+                    // Forcing app_handle.exit(0) from CloseRequested can race
+                    // WebKit process teardown on Linux (EGL/TLS destructors).
+                    // Letting the window close naturally reduces shutdown races.
                 }
             }
         })
