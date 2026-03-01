@@ -1464,7 +1464,8 @@
       "playback": "Reproducción",
       "navigation": "Navegación",
       "ui": "Interfaz",
-      "focus": "Inmersivo"
+      "focus": "Inmersivo",
+      "mini": "Mini Reproductor"
     },
     "actions": {
       "playbackToggle": "Reproducir / Pausar",
@@ -1479,10 +1480,16 @@
       "uiEscape": "Cerrar / Descartar",
       "uiShowShortcuts": "Mostrar Atajos",
       "uiOpenLink": "Abrir Enlace Musical",
+      "uiMiniPlayer": "Alternar Mini Reproductor",
       "focusSeekForward": "Avanzar (5s)",
       "focusSeekBack": "Retroceder (5s)",
       "focusSeekForwardLong": "Avanzar (10s)",
-      "focusSeekBackLong": "Retroceder (10s)"
+      "focusSeekBackLong": "Retroceder (10s)",
+      "miniMicro": "Vista Micro",
+      "miniCompact": "Vista Compacta",
+      "miniArtwork": "Vista Carátula",
+      "miniQueue": "Vista Cola",
+      "miniLyrics": "Vista Letras"
     },
     "descriptions": {
       "playbackToggle": "Alternar reproducción",
@@ -1497,10 +1504,16 @@
       "uiEscape": "Cerrar panel activo o modal",
       "uiShowShortcuts": "Mostrar modal de atajos de teclado",
       "uiOpenLink": "Abrir un enlace de Qobuz en la app",
+      "uiMiniPlayer": "Alternar modo mini reproductor",
       "focusSeekForward": "Avanzar 5 segundos",
       "focusSeekBack": "Retroceder 5 segundos",
       "focusSeekForwardLong": "Avanzar 10 segundos",
-      "focusSeekBackLong": "Retroceder 10 segundos"
+      "focusSeekBackLong": "Retroceder 10 segundos",
+      "miniMicro": "Cambiar a vista micro",
+      "miniCompact": "Cambiar a vista compacta",
+      "miniArtwork": "Cambiar a vista carátula",
+      "miniQueue": "Cambiar a vista cola",
+      "miniLyrics": "Cambiar a vista letras"
     }
   },
   "dacWizard": {

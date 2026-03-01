@@ -48,7 +48,12 @@
     setMiniPlayerOpen,
     setMiniPlayerSurface
   } from '$lib/stores/uiStore';
-  import { exitMiniplayerMode, setMiniplayerAlwaysOnTop } from '$lib/services/miniplayerService';
+  import { exitMiniplayerMode, closeAppFromMiniplayer, setMiniplayerAlwaysOnTop } from '$lib/services/miniplayerService';
+  import {
+    registerAction,
+    unregisterAll,
+    handleKeydown as keybindingHandler
+  } from '$lib/stores/keybindingsStore';
   import { playTrack } from '$lib/services/playbackService';
 
   let playerState = $state<PlayerState>(getPlayerState());
@@ -60,6 +65,7 @@
   let unlistenMoved: (() => void) | null = null;
   let unlistenResized: (() => void) | null = null;
   let unlistenCloseRequested: (() => void) | null = null;
+  let removeKeydownListener: (() => void) | null = null;
 
   let unsubscribePlayer: (() => void) | null = null;
   let unsubscribeQueue: (() => void) | null = null;
@@ -219,8 +225,26 @@
 
     unlistenCloseRequested = await appWindow.onCloseRequested((event) => {
       event.preventDefault();
-      void exitMiniplayerMode();
+      void closeAppFromMiniplayer();
     });
+
+    // Keyboard shortcuts
+    registerAction('playback.toggle', handleTogglePlay);
+    registerAction('playback.next', handleSkipForward);
+    registerAction('playback.prev', handleSkipBack);
+    registerAction('ui.miniPlayer', exitMiniplayerMode);
+    registerAction('ui.escape', exitMiniplayerMode);
+    registerAction('mini.micro', () => { void handleSurfaceChange('micro'); });
+    registerAction('mini.compact', () => { void handleSurfaceChange('compact'); });
+    registerAction('mini.artwork', () => { void handleSurfaceChange('artwork'); });
+    registerAction('mini.queue', () => { void handleSurfaceChange('queue'); });
+    registerAction('mini.lyrics', () => { void handleSurfaceChange('lyrics'); });
+
+    function onKeydown(event: KeyboardEvent) {
+      keybindingHandler(event, { miniPlayerMode: true });
+    }
+    document.addEventListener('keydown', onKeydown);
+    removeKeydownListener = () => document.removeEventListener('keydown', onKeydown);
 
     console.info('[MiniPlayer] Window ready');
   });
@@ -233,7 +257,9 @@
     unlistenMoved?.();
     unlistenResized?.();
     unlistenCloseRequested?.();
+    removeKeydownListener?.();
 
+    unregisterAll();
     stopActiveLineUpdates();
     stopWatching();
     stopQueueEventListener();
@@ -433,7 +459,7 @@
     }}
     onTogglePin={handleToggleAlwaysOnTop}
     onExpand={exitMiniplayerMode}
-    onClose={exitMiniplayerMode}
+    onClose={closeAppFromMiniplayer}
     onStartDrag={handleStartDrag}
     onTogglePlay={handleTogglePlay}
     onSkipBack={handleSkipBack}

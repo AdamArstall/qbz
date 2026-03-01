@@ -1402,7 +1402,8 @@
       "playback": "Wiedergabe",
       "navigation": "Navigation",
       "ui": "Oberfläche",
-      "focus": "Immersiv"
+      "focus": "Immersiv",
+      "mini": "Mini-Player"
     },
     "actions": {
       "playbackToggle": "Wiedergabe / Pause",
@@ -1417,10 +1418,16 @@
       "uiEscape": "Schließen / Verwerfen",
       "uiShowShortcuts": "Tastenkürzel anzeigen",
       "uiOpenLink": "Musik-Link öffnen",
+      "uiMiniPlayer": "Mini-Player umschalten",
       "focusSeekForward": "Vorspulen (5s)",
       "focusSeekBack": "Zurückspulen (5s)",
       "focusSeekForwardLong": "Vorspulen (10s)",
-      "focusSeekBackLong": "Zurückspulen (10s)"
+      "focusSeekBackLong": "Zurückspulen (10s)",
+      "miniMicro": "Mikro-Ansicht",
+      "miniCompact": "Kompaktansicht",
+      "miniArtwork": "Cover-Ansicht",
+      "miniQueue": "Warteschlange-Ansicht",
+      "miniLyrics": "Text-Ansicht"
     },
     "descriptions": {
       "playbackToggle": "Wiedergabe umschalten",
@@ -1435,10 +1442,16 @@
       "uiEscape": "Aktives Panel oder Modal schließen",
       "uiShowShortcuts": "Tastenkürzel-Modal anzeigen",
       "uiOpenLink": "Einen Qobuz-Link in der App öffnen",
+      "uiMiniPlayer": "Mini-Player-Modus umschalten",
       "focusSeekForward": "5 Sekunden vorspulen",
       "focusSeekBack": "5 Sekunden zurückspulen",
       "focusSeekForwardLong": "10 Sekunden vorspulen",
-      "focusSeekBackLong": "10 Sekunden zurückspulen"
+      "focusSeekBackLong": "10 Sekunden zurückspulen",
+      "miniMicro": "Zur Mikro-Ansicht wechseln",
+      "miniCompact": "Zur Kompaktansicht wechseln",
+      "miniArtwork": "Zur Cover-Ansicht wechseln",
+      "miniQueue": "Zur Warteschlange-Ansicht wechseln",
+      "miniLyrics": "Zur Text-Ansicht wechseln"
     }
   },
   "dacWizard": {

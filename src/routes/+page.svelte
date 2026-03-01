@@ -3015,6 +3015,7 @@
     });
     registerAction('ui.sidebar', toggleSidebar);
     registerAction('ui.focusMode', toggleFocusMode);
+    registerAction('ui.miniPlayer', () => { void enterMiniplayerMode(); });
     registerAction('ui.queue', toggleQueue);
     registerAction('ui.escape', handleUIEscape);
     registerAction('ui.showShortcuts', () => { isShortcutsModalOpen = true; });

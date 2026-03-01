@@ -194,3 +194,21 @@ export async function setMiniplayerAlwaysOnTop(alwaysOnTop: boolean): Promise<Al
 export async function closeMiniplayerWindow(): Promise<void> {
   await exitMiniplayerMode();
 }
+
+/**
+ * Close the app from the mini player.
+ *
+ * Triggers the main window's close handler which either:
+ * - Hides all windows to tray (if close-to-tray is enabled)
+ * - Quits the app (if close-to-tray is disabled)
+ */
+export async function closeAppFromMiniplayer(): Promise<void> {
+  try {
+    const mainWindow = await Window.getByLabel(MAIN_WINDOW_LABEL);
+    if (mainWindow) {
+      await mainWindow.close();
+    }
+  } catch (err) {
+    console.error('[MiniPlayer] Failed to close app:', err);
+  }
+}
