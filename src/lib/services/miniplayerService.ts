@@ -24,6 +24,7 @@ const MINI_PLAYER_LABEL = 'miniplayer';
 const MAIN_WINDOW_LABEL = 'main';
 const MINI_PLAYER_DEFAULT_VIEW_KEY = 'qbz-miniplayer-default-view';
 const MINI_PLAYER_SURFACE_OPTIONS: MiniPlayerSurface[] = ['micro', 'compact', 'artwork', 'queue', 'lyrics'];
+let isClosingAppFromMiniPlayer = false;
 
 function isMiniPlayerSurface(value: string): value is MiniPlayerSurface {
   return MINI_PLAYER_SURFACE_OPTIONS.includes(value as MiniPlayerSurface);
@@ -203,12 +204,30 @@ export async function closeMiniplayerWindow(): Promise<void> {
  * - Quits the app (if close-to-tray is disabled)
  */
 export async function closeAppFromMiniplayer(): Promise<void> {
+  if (isClosingAppFromMiniPlayer) {
+    return;
+  }
+
+  isClosingAppFromMiniPlayer = true;
+
   try {
+    const miniWindow = await Window.getByLabel(MINI_PLAYER_LABEL);
+    if (miniWindow) {
+      // Make the shutdown path single-window first to reduce teardown races.
+      await miniWindow.hide();
+    }
+    setMiniPlayerOpen(false);
+
+    await focusMainWindow();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
     const mainWindow = await Window.getByLabel(MAIN_WINDOW_LABEL);
     if (mainWindow) {
       await mainWindow.close();
     }
   } catch (err) {
     console.error('[MiniPlayer] Failed to close app:', err);
+  } finally {
+    isClosingAppFromMiniPlayer = false;
   }
 }

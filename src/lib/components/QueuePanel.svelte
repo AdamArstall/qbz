@@ -1,7 +1,12 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { X, Search, Heart, MoreVertical, Trash2, ListPlus, Info } from 'lucide-svelte';
   import { t } from '$lib/i18n';
-  import { invoke } from '@tauri-apps/api/core';
+  import {
+    isTrackFavorite,
+    toggleTrackFavorite as storeToggleTrackFavorite,
+    subscribe as subscribeFavorites
+  } from '$lib/stores/favoritesStore';
   import { getUserItem, setUserItem } from '$lib/utils/userStorage';
 
   interface QueueTrack {
@@ -68,6 +73,7 @@
 
   // Favorite state for current track
   let currentTrackFavorite = $state(false);
+  let unsubscribeFavorites: (() => void) | null = null;
 
   // Hover state for history tracks
   let hoveredHistoryTrack = $state<string | null>(null);
@@ -109,34 +115,35 @@
     }
   }
 
-  // Check favorite status when current track changes
-  $effect(() => {
-    if (currentTrack?.trackId) {
-      checkFavoriteStatus(currentTrack.trackId);
-    } else {
+  function syncCurrentTrackFavorite(): void {
+    if (!currentTrack?.trackId) {
       currentTrackFavorite = false;
+      return;
     }
+    currentTrackFavorite = isTrackFavorite(currentTrack.trackId);
+  }
+
+  // Keep current-track favorite state in sync with global favorites store
+  $effect(() => {
+    if (unsubscribeFavorites) return;
+    unsubscribeFavorites = subscribeFavorites(syncCurrentTrackFavorite);
+    syncCurrentTrackFavorite();
   });
 
-  async function checkFavoriteStatus(trackId: number) {
-    try {
-      const result = await invoke<boolean>('is_track_favorite', { trackId });
-      currentTrackFavorite = result;
-    } catch {
-      currentTrackFavorite = false;
-    }
-  }
+  onDestroy(() => {
+    unsubscribeFavorites?.();
+    unsubscribeFavorites = null;
+  });
+
+  // Re-evaluate when current track changes
+  $effect(() => {
+    syncCurrentTrackFavorite();
+  });
 
   async function toggleCurrentTrackFavorite() {
     if (!currentTrack?.trackId) return;
     try {
-      if (currentTrackFavorite) {
-        await invoke('v2_remove_favorite', { favType: 'tracks', itemId: String(currentTrack.trackId) });
-        currentTrackFavorite = false;
-      } else {
-        await invoke('v2_add_favorite', { favType: 'tracks', itemId: String(currentTrack.trackId) });
-        currentTrackFavorite = true;
-      }
+      currentTrackFavorite = await storeToggleTrackFavorite(currentTrack.trackId);
     } catch (err) {
       console.error('Failed to toggle favorite:', err);
     }

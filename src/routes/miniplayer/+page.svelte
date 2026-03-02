@@ -484,6 +484,7 @@
     height: 100vh;
     overflow: hidden;
     background: transparent;
+    border-radius: 10px;
     padding: 6px;
     box-sizing: border-box;
     position: relative;

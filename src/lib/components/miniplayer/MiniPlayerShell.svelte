@@ -156,7 +156,6 @@
     border: 1px solid var(--alpha-10);
     border-radius: 10px;
     overflow: hidden;
-    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.34);
   }
 
   .mini-player-window.compact {

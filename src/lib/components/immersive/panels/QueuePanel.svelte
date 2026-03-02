@@ -15,6 +15,7 @@
     currentIndex: number;
     onPlayTrack: (index: number) => void;
     onClear?: () => void;
+    centeredLayout?: boolean;
     // History props
     historyTracks?: QueueTrack[];
     onPlayHistoryTrack?: (trackId: string) => void;
@@ -25,6 +26,7 @@
     currentIndex = 0,
     onPlayTrack,
     onClear,
+    centeredLayout = false,
     historyTracks = [],
     onPlayHistoryTrack
   }: Props = $props();
@@ -46,7 +48,7 @@
   }
 </script>
 
-<div class="queue-panel">
+<div class="queue-panel" class:centered-layout={centeredLayout}>
   <!-- Header with sub-tabs -->
   <div class="panel-header">
     <div class="sub-tabs">
@@ -167,6 +169,14 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .queue-panel.centered-layout {
+    flex: 0 1 auto;
+    width: 100%;
+    min-height: 320px;
+    height: clamp(340px, 62vh, 760px);
+    max-height: 80vh;
   }
 
   .panel-header {

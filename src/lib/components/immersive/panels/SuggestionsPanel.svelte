@@ -39,13 +39,25 @@
     artistName?: string;
     trackName?: string;
     currentArtwork?: string;
+    centeredLayout?: boolean;
     onPlayPlaylist?: (playlistId: number) => void;
     onPlayTrack?: (trackId: number) => void;
     onAddToQueue?: (type: 'playlist' | 'radio', id: number) => void;
     onPlayNext?: (type: 'playlist' | 'radio', id: number) => void;
   }
 
-  let { trackId, artistId, artistName, trackName, currentArtwork, onPlayPlaylist, onPlayTrack, onAddToQueue, onPlayNext }: Props = $props();
+  let {
+    trackId,
+    artistId,
+    artistName,
+    trackName,
+    currentArtwork,
+    centeredLayout = false,
+    onPlayPlaylist,
+    onPlayTrack,
+    onAddToQueue,
+    onPlayNext
+  }: Props = $props();
 
   // State
   let artistPlaylists = $state<Playlist[]>([]);
@@ -233,7 +245,7 @@
   const isLoading = $derived(loading && !artistPlaylists.length && !recommendedTracks.length);
 </script>
 
-<div class="suggestions-panel">
+<div class="suggestions-panel" class:centered-layout={centeredLayout}>
   {#if isLoading}
     <div class="loading-state">
       <Loader2 size={28} class="spinner" />
@@ -403,6 +415,14 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .suggestions-panel.centered-layout {
+    flex: 0 1 auto;
+    width: 100%;
+    min-height: 320px;
+    height: clamp(340px, 62vh, 760px);
+    max-height: 80vh;
   }
 
   .loading-state,

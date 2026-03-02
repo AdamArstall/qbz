@@ -4645,7 +4645,7 @@
   }
 
   .app.floating {
-    border-radius: 8px;
+    border-radius: 0;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4), 0 0 1px rgba(0, 0, 0, 0.3);
     overflow: hidden;
   }

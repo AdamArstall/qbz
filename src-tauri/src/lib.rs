@@ -1605,33 +1605,56 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::Exit = event {
-                let open_windows: Vec<String> = app_handle.webview_windows().keys().cloned().collect();
-                log::info!("RunEvent::Exit — windows visible to app: {:?}", open_windows);
+            match event {
+                tauri::RunEvent::WindowEvent { label, event, .. } => {
+                    if label == "main" {
+                        if let tauri::WindowEvent::Destroyed = event {
+                            let close_to_tray = app_handle
+                                .try_state::<config::tray_settings::TraySettingsState>()
+                                .and_then(|state| state.get_settings().ok())
+                                .map(|s| s.close_to_tray)
+                                .unwrap_or(false);
 
-                // Graceful shutdown: stop audio and visualizer BEFORE process
-                // teardown. The stop() calls are fire-and-forget via channel,
-                // so we must wait for the audio threads to actually drop their
-                // CPAL streams.
-                log::info!("RunEvent::Exit — stopping audio and visualizer");
-
-                if let Some(state) = app_handle.try_state::<AppState>() {
-                    state.visualizer.set_enabled(false);
-                    let _ = state.player.stop();
-                }
-
-                if let Some(bridge_state) = app_handle.try_state::<core_bridge::CoreBridgeState>() {
-                    if let Ok(guard) = bridge_state.0.try_read() {
-                        if let Some(bridge) = guard.as_ref() {
-                            let _ = bridge.player().stop();
+                            if !close_to_tray {
+                                log::info!(
+                                    "RunEvent::WindowEvent::Destroyed(main) with close_to_tray=false; exiting app"
+                                );
+                                app_handle.exit(0);
+                            }
                         }
                     }
                 }
+                tauri::RunEvent::Exit => {
+                    let open_windows: Vec<String> =
+                        app_handle.webview_windows().keys().cloned().collect();
+                    log::info!("RunEvent::Exit — windows visible to app: {:?}", open_windows);
 
-                // Wait for audio threads to process stop and drop CPAL streams.
-                // Without this, exit() can free heap while CPAL threads still run.
-                std::thread::sleep(std::time::Duration::from_millis(200));
-                log::info!("RunEvent::Exit — shutdown complete");
+                    // Graceful shutdown: stop audio and visualizer BEFORE process
+                    // teardown. The stop() calls are fire-and-forget via channel,
+                    // so we must wait for the audio threads to actually drop their
+                    // CPAL streams.
+                    log::info!("RunEvent::Exit — stopping audio and visualizer");
+
+                    if let Some(state) = app_handle.try_state::<AppState>() {
+                        state.visualizer.set_enabled(false);
+                        let _ = state.player.stop();
+                    }
+
+                    if let Some(bridge_state) = app_handle.try_state::<core_bridge::CoreBridgeState>()
+                    {
+                        if let Ok(guard) = bridge_state.0.try_read() {
+                            if let Some(bridge) = guard.as_ref() {
+                                let _ = bridge.player().stop();
+                            }
+                        }
+                    }
+
+                    // Wait for audio threads to process stop and drop CPAL streams.
+                    // Without this, exit() can free heap while CPAL threads still run.
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    log::info!("RunEvent::Exit — shutdown complete");
+                }
+                _ => {}
             }
         });
 }

@@ -602,7 +602,10 @@
         </div>
 
         <!-- Right: Active Panel -->
-        <div class="panel-section">
+        <div
+          class="panel-section"
+          class:centered-panel={activeTab === 'trackInfo' || activeTab === 'suggestions' || activeTab === 'queue'}
+        >
           {#if activeTab === 'lyrics'}
             <LyricsPanel
               lines={lyricsLines}
@@ -613,7 +616,7 @@
               error={lyricsError}
             />
           {:else if activeTab === 'trackInfo'}
-            <TrackInfoPanel {trackId} />
+            <TrackInfoPanel {trackId} centeredLayout={true} />
           {:else if activeTab === 'suggestions'}
             <SuggestionsPanel
               {trackId}
@@ -621,6 +624,7 @@
               artistName={artist}
               trackName={trackTitle}
               currentArtwork={artwork}
+              centeredLayout={true}
             />
           {:else if activeTab === 'queue'}
             <QueuePanel
@@ -630,6 +634,7 @@
               onClear={onQueueClear}
               {historyTracks}
               onPlayHistoryTrack={(trackId) => onPlayHistoryTrack?.(trackId)}
+              centeredLayout={true}
             />
           {/if}
         </div>
@@ -775,6 +780,10 @@
     display: flex;
     flex-direction: column;
     align-self: center;
+  }
+
+  .panel-section.centered-panel {
+    justify-content: center;
   }
 
   /* Focus mode panels (queue) */
