@@ -484,7 +484,8 @@
     tunnelScaleY: number,
     timeMs: number,
     bass: number,
-    high: number
+    high: number,
+    lateralCurve: number
   ) {
     if (!ctx) return;
 
@@ -576,21 +577,48 @@
     const portalEdgeStroke = `rgba(250, 250, 250, ${0.08 + high * 0.03})`;
     const portalEdgeWidth = 0.8 + bass * 0.2;
 
-    // Front shadow trail: projected from hole vertices toward tunnel walls
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.strokeStyle = `rgba(0, 0, 0, ${0.5 + high * 0.18 + kickPulse * 0.14})`;
-    ctx.lineWidth = Math.max(1.1, portalEdgeWidth * 1.46);
-    for (let vertexIndex = 0; vertexIndex < 4; vertexIndex++) {
-      const startPoint = holeSquare[vertexIndex];
-      const endPoint = innerSquare[vertexIndex];
-      const shadowEndX = startPoint.x + (endPoint.x - startPoint.x) * 0.88;
-      const shadowEndY = startPoint.y + (endPoint.y - startPoint.y) * 0.88;
+    // Directional front shadow: appears only on the curve-leading side.
+    const lateralAbs = Math.abs(lateralCurve);
+    if (lateralAbs > 0.06) {
+      const shadowStrength = clamp01((lateralAbs - 0.06) / 0.58);
+      const sideIsRight = lateralCurve > 0;
+      const topIndex = sideIsRight ? 1 : 0;
+      const bottomIndex = sideIsRight ? 2 : 3;
+
+      const holeTop = holeSquare[topIndex];
+      const holeBottom = holeSquare[bottomIndex];
+      const innerTop = innerSquare[topIndex];
+      const innerBottom = innerSquare[bottomIndex];
+
+      const midHoleX = (holeTop.x + holeBottom.x) * 0.5;
+      const midHoleY = (holeTop.y + holeBottom.y) * 0.5;
+      const midInnerX = (innerTop.x + innerBottom.x) * 0.5;
+      const midInnerY = (innerTop.y + innerBottom.y) * 0.5;
+
+      const shadowGradient = ctx.createLinearGradient(midHoleX, midHoleY, midInnerX, midInnerY);
+      shadowGradient.addColorStop(0, `rgba(0, 0, 0, ${0.56 + shadowStrength * 0.22})`);
+      shadowGradient.addColorStop(0.72, `rgba(0, 0, 0, ${0.22 + shadowStrength * 0.18})`);
+      shadowGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = shadowGradient;
       ctx.beginPath();
-      ctx.moveTo(startPoint.x, startPoint.y);
-      ctx.lineTo(shadowEndX, shadowEndY);
+      ctx.moveTo(holeTop.x, holeTop.y);
+      ctx.lineTo(holeBottom.x, holeBottom.y);
+      ctx.lineTo(innerBottom.x, innerBottom.y);
+      ctx.lineTo(innerTop.x, innerTop.y);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = `rgba(0, 0, 0, ${0.42 + shadowStrength * 0.22})`;
+      ctx.lineWidth = Math.max(1, portalEdgeWidth * 1.2);
+      ctx.beginPath();
+      ctx.moveTo(holeTop.x, holeTop.y);
+      ctx.lineTo(holeBottom.x, holeBottom.y);
       ctx.stroke();
+
+      ctx.globalCompositeOperation = 'source-over';
     }
-    ctx.globalCompositeOperation = 'source-over';
 
     // Portal edge highlight to lock perspective corners
     ctx.strokeStyle = portalEdgeStroke;
@@ -668,17 +696,18 @@
     const bass = getBassEnergy();
     const mid = getMidEnergy();
     const high = getHighEnergy();
-    const curveBaseX = minDim * (0.044 + high * 0.016 + kickPulse * 0.014);
-    const curveBaseY = minDim * (0.028 + bass * 0.012 + kickPulse * 0.01);
+    const curveBaseX = drawWidth * (0.14 + high * 0.05 + kickPulse * 0.04);
+    const curveBaseY = minDim * (0.036 + bass * 0.018 + kickPulse * 0.014);
     const curvePhase = timestamp * 0.0006 + phase * 0.14;
     const tunnelCenterX =
       centerX +
       Math.sin(curvePhase) * curveBaseX +
-      Math.sin(curvePhase * 2.08 + 1.2) * minDim * 0.014;
+      Math.sin(curvePhase * 2.08 + 1.2) * drawWidth * 0.042;
     const tunnelCenterY =
       centerY +
       Math.cos(curvePhase * 0.82 + 0.7) * curveBaseY +
-      Math.cos(curvePhase * 1.7 + 0.4) * minDim * 0.008;
+      Math.cos(curvePhase * 1.7 + 0.4) * minDim * 0.012;
+    const lateralCurve = Math.max(-1, Math.min(1, (tunnelCenterX - centerX) / Math.max(1, drawWidth * 0.25)));
 
     phase += 0.012 + bass * 0.026 + high * 0.014 + kickPulse * 0.018;
     kickPulse *= 0.9;
@@ -699,7 +728,8 @@
       tunnelScaleY,
       timestamp,
       bass,
-      high
+      high,
+      lateralCurve
     );
     drawCornerVignette(drawWidth, drawHeight, minDim);
 
