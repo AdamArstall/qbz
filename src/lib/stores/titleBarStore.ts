@@ -85,10 +85,10 @@ export function shouldShowTitleBar(): boolean {
 
 /**
  * Get the title bar height for layout calculations
- * Returns 0 if title bar is hidden or system title bar is active, 36 otherwise
+ * Returns 0 if title bar is hidden or system title bar is active, 40 otherwise
  */
 export function getTitleBarHeight(): number {
-  return (hideTitleBar || useSystemTitleBar) ? 0 : 36;
+  return (hideTitleBar || useSystemTitleBar) ? 0 : 40;
 }
 
 /**

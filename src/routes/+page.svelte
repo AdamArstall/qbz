@@ -4726,7 +4726,7 @@
     display: flex;
     flex: 1;
     min-width: 0;
-    height: calc(100vh - 140px); /* 104px NowPlayingBar + 36px TitleBar */
+    height: calc(100vh - 144px); /* 104px NowPlayingBar + 40px TitleBar */
     overflow: hidden;
     position: relative;
   }
@@ -4734,7 +4734,7 @@
   .main-content {
     flex: 1;
     min-width: 0;
-    height: calc(100vh - 140px); /* 104px NowPlayingBar + 36px TitleBar */
+    height: calc(100vh - 144px); /* 104px NowPlayingBar + 40px TitleBar */
     overflow: hidden; /* Views handle their own scrolling */
     padding-right: 8px; /* Gap between scrollbar and window edge */
     background-color: var(--bg-primary, #0f0f0f);

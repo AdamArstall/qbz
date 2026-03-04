@@ -259,8 +259,8 @@
 
 <style>
   .titlebar {
-    height: 36px;
-    min-height: 36px;
+    height: 40px;
+    min-height: 40px;
     background-color: var(--bg-secondary);
     display: flex;
     align-items: center;
@@ -285,7 +285,7 @@
     gap: 6px;
     width: 100%;
     max-width: 400px;
-    height: 24px;
+    height: 28px;
     background-color: var(--bg-tertiary);
     border-radius: 6px;
     padding: 0 8px;

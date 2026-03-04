@@ -2050,7 +2050,7 @@
     z-index: 2000;
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 140px); /* 104px NowPlayingBar + 36px TitleBar */
+    height: calc(100vh - 144px); /* 104px NowPlayingBar + 40px TitleBar */
     transition: width 200ms ease, min-width 200ms ease;
   }
 
