@@ -88,26 +88,28 @@ const TAB_TYPES: Record<TabId, DownloadItem['type'][]> = {
   source: [],
 }
 
+const TAB_ICONS: Record<TabId, string | null> = {
+  arch: '/icons/arch.svg',
+  debian: '/icons/debian.svg',
+  fedora: '/icons/redhat.svg',
+  flatpak: '/icons/flatpak.svg',
+  snap: '/icons/snapcraft.svg',
+  appimage: null,
+  tarball: '/icons/tarball.svg',
+  source: '/icons/rust.svg',
+}
+
 function TabIcon({ id }: { id: TabId }) {
-  const s = { width: 18, height: 18, className: 'download-tab__icon' }
-  switch (id) {
-    case 'arch':
-      return <svg {...s} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L3 22h5l4-9 4 9h5z"/></svg>
-    case 'debian':
-      return <svg {...s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 22C6.5 22 2 17.5 2 12S6.5 2 12 2s10 4.5 10 10"/><path d="M12 17c-2.8 0-5-2.2-5-5s2.2-5 5-5"/></svg>
-    case 'fedora':
-      return <svg {...s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><path d="M10 16v-6h5M10 12h3"/></svg>
-    case 'flatpak':
-      return <svg {...s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M3 12h18"/></svg>
-    case 'snap':
-      return <svg {...s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M12 2l8.5 5v10L12 22l-8.5-5V7z"/></svg>
-    case 'appimage':
-      return <svg {...s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 9v6M9 12l3 3 3-3"/></svg>
-    case 'tarball':
-      return <svg {...s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h6M9 11h6"/></svg>
-    case 'source':
-      return <svg {...s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 4L2 12l6 8"/><path d="M16 4l6 8-6 8"/></svg>
+  const src = TAB_ICONS[id]
+  if (src) {
+    return <img className="download-tab__icon" src={src} alt="" width={18} height={18} loading="lazy" />
   }
+  // AppImage: inline SVG fallback
+  return (
+    <svg className="download-tab__icon download-tab__icon--inline" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 9v6M9 12l3 3 3-3"/>
+    </svg>
+  )
 }
 
 /* ── Helpers ──────────────────────────────────────────────── */
@@ -194,6 +196,8 @@ const getDepsCmd = (type: DownloadItem['type']): string | undefined => {
   }
 }
 
+const ARCH_ORDER: Record<string, number> = { 'x86_64': 0, 'arm64': 1 }
+
 const mapAssets = (assets: ReleaseAsset[]): DownloadItem[] =>
   assets
     .filter((a) => a.browser_download_url)
@@ -214,6 +218,7 @@ const mapAssets = (assets: ReleaseAsset[]): DownloadItem[] =>
       }
     })
     .filter((item) => item.type !== 'unknown')
+    .sort((a, b) => (ARCH_ORDER[a.arch ?? ''] ?? 9) - (ARCH_ORDER[b.arch ?? ''] ?? 9))
 
 /* ── Static Items ─────────────────────────────────────────── */
 
@@ -283,18 +288,22 @@ function ItemView({ item }: { item: DownloadItem }) {
   // Download command for file-based items (not stores)
   const downloadCmd = !isStore ? `wget ${item.url}` : undefined
 
+  const archTitle = item.arch === 'x86_64' ? 'Intel & AMD processors (64-bit)'
+    : item.arch === 'arm64' ? 'ARM processors (Apple Silicon, Raspberry Pi, Snapdragon)'
+    : undefined
+
   return (
     <div className="download-item">
       <div className="download-item__header">
         <div className="download-item__info">
           {displayLabel && <span className="download-item__label">{displayLabel}</span>}
-          {item.arch && <span className="download-item__arch">{item.arch}</span>}
+          {item.arch && <span className="download-item__arch" title={archTitle}>{item.arch}</span>}
+          {!isStore && (
+            <span className="download-item__file">
+              {item.fileName} · {formatBytes(item.size)}
+            </span>
+          )}
         </div>
-        {!isStore && (
-          <span className="download-item__file">
-            {item.fileName} · {formatBytes(item.size)}
-          </span>
-        )}
       </div>
       {downloadCmd && (
         <div className="terminal">

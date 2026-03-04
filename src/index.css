@@ -680,6 +680,11 @@ p {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
+  filter: var(--icon-filter);
+}
+
+.download-tab__icon--inline {
+  filter: none;
 }
 
 .download-tab-content {
@@ -964,14 +969,14 @@ p {
 
 .download-item__header {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
 }
 
 .download-item__info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .download-item__label {
@@ -980,12 +985,14 @@ p {
 }
 
 .download-item__arch {
-  font-size: 0.75rem;
-  font-weight: 500;
-  padding: 2px 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 4px 10px;
   background: var(--accent-soft);
   color: var(--accent);
-  border-radius: 4px;
+  border-radius: 6px;
+  letter-spacing: 0.02em;
+  cursor: default;
 }
 
 .download-item__file {
