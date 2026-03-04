@@ -63,7 +63,6 @@ use crate::AppState;
 use md5::{Digest, Md5};
 use ashpd::desktop::notification::{Notification as PortalNotification, NotificationProxy};
 use ashpd::desktop::Icon;
-use ashpd::Uri;
 use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
@@ -9436,9 +9435,8 @@ pub async fn v2_show_track_notification(
 
     if let Some(ref url_str) = artwork_url {
         if let Ok(path) = v2_cache_notification_artwork(url_str) {
-            let file_uri_str = format!("file://{}", path.display());
-            if let Ok(uri) = Uri::parse(&file_uri_str) {
-                notification = notification.icon(Icon::Uri(uri));
+            if let Ok(bytes) = std::fs::read(&path) {
+                notification = notification.icon(Icon::Bytes(bytes));
             }
         }
     }
