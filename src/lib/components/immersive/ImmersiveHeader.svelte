@@ -214,7 +214,7 @@
           {:else if activeFocusTab === 'neon-flow'}
             <img src="/laser.svg" alt="" class="viz-img-icon" aria-hidden="true" />
           {:else if activeFocusTab === 'tunnel-flow'}
-            <CircleDot size={16} />
+            <img src="/cube-svgrepo-com.svg" alt="" class="viz-img-icon" aria-hidden="true" />
           {:else if activeFocusTab === 'comet-flow'}
             <Disc size={16} />
           {:else}
@@ -270,7 +270,7 @@
                     class:active={activeFocusTab === 'tunnel-flow'}
                     onclick={() => selectVisualizerTab('tunnel-flow')}
                   >
-                    <CircleDot size={14} />
+                    <img src="/cube-svgrepo-com.svg" alt="" class="viz-img-icon" aria-hidden="true" />
                     <span>{$t('settings.appearance.immersiveFps.panels.tunnel-flow')}</span>
                   </button>
                   <button
