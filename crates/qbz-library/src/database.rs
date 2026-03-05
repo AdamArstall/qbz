@@ -990,6 +990,17 @@ impl LibraryDatabase {
                 .map_err(|e| LibraryError::Database(e.to_string()));
         }
 
+        // Detect if this file is a Qobuz purchased download
+        let is_purchase: bool = self.conn
+            .query_row(
+                "SELECT COUNT(*) FROM downloaded_purchases WHERE file_path = ?1",
+                params![track.file_path],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap_or(0) > 0;
+
+        let source = if is_purchase { "qobuz_purchase" } else { "user" };
+
         self.conn
             .execute(
                 r#"INSERT OR REPLACE INTO local_tracks
@@ -997,8 +1008,8 @@ impl LibraryDatabase {
                 disc_number, year, genre, catalog_number, duration_secs, format, bit_depth,
                 sample_rate, channels, file_size_bytes, cue_file_path,
                 cue_start_secs, cue_end_secs, artwork_path, last_modified, indexed_at,
-                album_group_key, album_group_title)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+                album_group_key, album_group_title, source)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
                 params![
                     track.file_path,
                     track.title,
@@ -1023,7 +1034,8 @@ impl LibraryDatabase {
                     track.last_modified,
                     track.indexed_at,
                     track.album_group_key,
-                    track.album_group_title
+                    track.album_group_title,
+                    source
                 ],
             )
             .map_err(|e| LibraryError::Database(e.to_string()))?;
@@ -3946,22 +3958,50 @@ impl LibraryDatabase {
     }
 
     /// Get all downloaded track IDs for fast lookup (any format).
+    /// Automatically removes stale entries where the file no longer exists on disk.
     pub fn get_downloaded_purchase_track_ids(&self) -> Result<Vec<i64>, LibraryError> {
         let mut stmt = self
             .conn
-            .prepare("SELECT DISTINCT track_id FROM downloaded_purchases")
+            .prepare("SELECT track_id, format_id, file_path FROM downloaded_purchases")
             .map_err(|e| {
                 LibraryError::Database(format!("Failed to prepare statement: {}", e))
             })?;
 
-        let ids = stmt
-            .query_map([], |row| row.get::<_, i64>(0))
+        let rows: Vec<(i64, i64, String)> = stmt
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
             .map_err(|e| {
                 LibraryError::Database(format!("Failed to query downloaded purchases: {}", e))
-            })?;
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| LibraryError::Database(format!("Failed to collect rows: {}", e)))?;
 
-        ids.collect::<Result<Vec<_>, _>>()
-            .map_err(|e| LibraryError::Database(format!("Failed to collect ids: {}", e)))
+        let mut stale: Vec<(i64, i64)> = Vec::new();
+        let mut valid_ids: Vec<i64> = Vec::new();
+
+        for (track_id, format_id, file_path) in &rows {
+            if std::path::Path::new(file_path).exists() {
+                valid_ids.push(*track_id);
+            } else {
+                stale.push((*track_id, *format_id));
+            }
+        }
+
+        // Remove stale entries where the file no longer exists
+        if !stale.is_empty() {
+            log::info!("Removing {} stale downloaded_purchases entries (files deleted)", stale.len());
+            for (track_id, format_id) in &stale {
+                let _ = self.conn.execute(
+                    "DELETE FROM downloaded_purchases WHERE track_id = ?1 AND format_id = ?2",
+                    rusqlite::params![track_id, format_id],
+                );
+            }
+        }
+
+        valid_ids.sort_unstable();
+        valid_ids.dedup();
+        Ok(valid_ids)
     }
 
     /// Get all downloaded (track_id, format_id) pairs for building per-format lookup.
