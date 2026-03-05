@@ -7479,59 +7479,93 @@ pub fn v2_set_audio_alsa_plugin(
 
 /// Set gapless playback enabled (V2)
 #[tauri::command]
-pub fn v2_set_audio_gapless_enabled(
+pub async fn v2_set_audio_gapless_enabled(
     enabled: bool,
     state: State<'_, AudioSettingsState>,
+    bridge: State<'_, CoreBridgeState>,
 ) -> Result<(), RuntimeError> {
     log::info!("[V2] set_audio_gapless_enabled: {}", enabled);
-    let guard = state
-        .store
-        .lock()
-        .map_err(|e| RuntimeError::Internal(format!("Lock error: {}", e)))?;
-    let store = guard
-        .as_ref()
-        .ok_or(RuntimeError::UserSessionNotActivated)?;
-    store
-        .set_gapless_enabled(enabled)
-        .map_err(RuntimeError::Internal)
+    let fresh_settings = {
+        let guard = state
+            .store
+            .lock()
+            .map_err(|e| RuntimeError::Internal(format!("Lock error: {}", e)))?;
+        let store = guard
+            .as_ref()
+            .ok_or(RuntimeError::UserSessionNotActivated)?;
+        store
+            .set_gapless_enabled(enabled)
+            .map_err(RuntimeError::Internal)?;
+        store.get_settings().ok()
+    }; // guard dropped here before .await
+
+    // Sync to player immediately so gapless takes effect without restart
+    if let Some(fresh) = fresh_settings {
+        if let Some(b) = bridge.try_get().await {
+            let _ = b.player().reload_settings(convert_to_qbz_audio_settings(&fresh));
+        }
+    }
+    Ok(())
 }
 
 /// Set normalization enabled (V2)
 #[tauri::command]
-pub fn v2_set_audio_normalization_enabled(
+pub async fn v2_set_audio_normalization_enabled(
     enabled: bool,
     state: State<'_, AudioSettingsState>,
+    bridge: State<'_, CoreBridgeState>,
 ) -> Result<(), RuntimeError> {
     log::info!("[V2] set_audio_normalization_enabled: {}", enabled);
-    let guard = state
-        .store
-        .lock()
-        .map_err(|e| RuntimeError::Internal(format!("Lock error: {}", e)))?;
-    let store = guard
-        .as_ref()
-        .ok_or(RuntimeError::UserSessionNotActivated)?;
-    store
-        .set_normalization_enabled(enabled)
-        .map_err(RuntimeError::Internal)
+    let fresh_settings = {
+        let guard = state
+            .store
+            .lock()
+            .map_err(|e| RuntimeError::Internal(format!("Lock error: {}", e)))?;
+        let store = guard
+            .as_ref()
+            .ok_or(RuntimeError::UserSessionNotActivated)?;
+        store
+            .set_normalization_enabled(enabled)
+            .map_err(RuntimeError::Internal)?;
+        store.get_settings().ok()
+    };
+
+    if let Some(fresh) = fresh_settings {
+        if let Some(b) = bridge.try_get().await {
+            let _ = b.player().reload_settings(convert_to_qbz_audio_settings(&fresh));
+        }
+    }
+    Ok(())
 }
 
 /// Set normalization target LUFS (V2)
 #[tauri::command]
-pub fn v2_set_audio_normalization_target(
+pub async fn v2_set_audio_normalization_target(
     target: f32,
     state: State<'_, AudioSettingsState>,
+    bridge: State<'_, CoreBridgeState>,
 ) -> Result<(), RuntimeError> {
     log::info!("[V2] set_audio_normalization_target: {}", target);
-    let guard = state
-        .store
-        .lock()
-        .map_err(|e| RuntimeError::Internal(format!("Lock error: {}", e)))?;
-    let store = guard
-        .as_ref()
-        .ok_or(RuntimeError::UserSessionNotActivated)?;
-    store
-        .set_normalization_target_lufs(target)
-        .map_err(RuntimeError::Internal)
+    let fresh_settings = {
+        let guard = state
+            .store
+            .lock()
+            .map_err(|e| RuntimeError::Internal(format!("Lock error: {}", e)))?;
+        let store = guard
+            .as_ref()
+            .ok_or(RuntimeError::UserSessionNotActivated)?;
+        store
+            .set_normalization_target_lufs(target)
+            .map_err(RuntimeError::Internal)?;
+        store.get_settings().ok()
+    };
+
+    if let Some(fresh) = fresh_settings {
+        if let Some(b) = bridge.try_get().await {
+            let _ = b.player().reload_settings(convert_to_qbz_audio_settings(&fresh));
+        }
+    }
+    Ok(())
 }
 
 /// Set device max sample rate (V2)
