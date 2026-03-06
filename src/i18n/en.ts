@@ -217,6 +217,11 @@ export const en = {
       deb: 'Requires glibc 2.38+ (Ubuntu 24.04+, Debian 13+, Mint 22+). Older distros? Use Flatpak, Snap, or AppImage.',
       rpm: 'Requires glibc 2.38+ (Fedora 39+, openSUSE Tumbleweed). Older distros? Use Flatpak, Snap, or AppImage.',
     },
+    aptRepo: {
+      label: 'APT Repository (recommended)',
+      description: 'Add the QBZ repository for automatic updates via apt. Works on Debian, Ubuntu, Mint, Pop!_OS, and derivatives.',
+      updateNote: 'After setup, updates are automatic: sudo apt update && sudo apt upgrade qbz',
+    },
     buildTitle: 'Build from source (advanced)',
     buildBody: 'QBZ targets Linux. macOS builds may work, but features like PipeWire, casting, and device control can be incomplete or unstable.',
     buildInstructions: {

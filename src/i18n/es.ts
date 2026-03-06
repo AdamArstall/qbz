@@ -217,6 +217,11 @@ export const es = {
       deb: 'Requiere glibc 2.38+ (Ubuntu 24.04+, Debian 13+, Mint 22+). ¿Distro anterior? Usa Flatpak, Snap o AppImage.',
       rpm: 'Requiere glibc 2.38+ (Fedora 39+, openSUSE Tumbleweed). ¿Distro anterior? Usa Flatpak, Snap o AppImage.',
     },
+    aptRepo: {
+      label: 'Repositorio APT (recomendado)',
+      description: 'Agrega el repositorio de QBZ para actualizaciones automáticas vía apt. Funciona en Debian, Ubuntu, Mint, Pop!_OS y derivados.',
+      updateNote: 'Después de configurar, las actualizaciones son automáticas: sudo apt update && sudo apt upgrade qbz',
+    },
     buildTitle: 'Compilar desde el código (avanzado)',
     buildBody: 'QBZ está enfocado en Linux. En macOS puede compilar, pero funciones como PipeWire, casting y control de dispositivos pueden estar incompletas o inestables.',
     buildInstructions: {

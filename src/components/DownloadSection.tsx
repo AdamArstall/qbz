@@ -149,7 +149,7 @@ const getInstallCmd = (type: DownloadItem['type'], fileName: string): string | u
     case 'flathub': return 'flatpak install flathub com.blitzfc.qbz'
     case 'snap': return 'sudo snap install qbz-player'
     case 'appimage': return `chmod +x ${fileName} && ./${fileName}`
-    case 'deb': return `sudo dpkg -i ${fileName}`
+    case 'deb': return `sudo apt install ./${fileName}`
     case 'rpm': return `sudo rpm -i ${fileName}`
     case 'flatpak': return `flatpak install --user ./${fileName}`
     case 'tarball': {
@@ -370,6 +370,40 @@ function ItemView({ item }: { item: DownloadItem }) {
   )
 }
 
+const APT_REPO_CMDS = [
+  'curl -fsSL https://vicrodh.github.io/qbz-apt/qbz-archive-keyring.gpg | sudo tee /usr/share/keyrings/qbz-archive-keyring.gpg > /dev/null',
+  'echo "deb [signed-by=/usr/share/keyrings/qbz-archive-keyring.gpg arch=$(dpkg --print-architecture)] https://vicrodh.github.io/qbz-apt stable main" | sudo tee /etc/apt/sources.list.d/qbz.list',
+  'sudo apt update && sudo apt install qbz',
+]
+
+function AptRepoSection() {
+  const { t } = useTranslation()
+  return (
+    <div className="download-item">
+      <div className="download-item__header">
+        <div className="download-item__info">
+          <span className="download-item__label">{t('downloads.aptRepo.label')}</span>
+        </div>
+      </div>
+      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
+        {t('downloads.aptRepo.description')}
+      </p>
+      {APT_REPO_CMDS.map((cmd) => (
+        <div key={cmd} className="terminal" style={{ marginBottom: 6 }}>
+          <code>
+            <span className="terminal__prompt">$</span>
+            <span className="terminal__cmd">{cmd}</span>
+          </code>
+          <CopyButton text={cmd} />
+        </div>
+      ))}
+      <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 8 }}>
+        {t('downloads.aptRepo.updateNote')}
+      </p>
+    </div>
+  )
+}
+
 function SourceContent() {
   const { t } = useTranslation()
   return (
@@ -467,7 +501,6 @@ function SourceContent() {
           <ul className="list list--compact" style={{ marginTop: 8 }}>
             <li><strong>Last.fm</strong> — <a href="https://www.last.fm/api/account/create" target="_blank" rel="noreferrer">last.fm/api/account/create</a></li>
             <li><strong>Discogs</strong> — <a href="https://www.discogs.com/settings/developers" target="_blank" rel="noreferrer">discogs.com/settings/developers</a></li>
-            <li><strong>Spotify</strong> — <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer">developer.spotify.com/dashboard</a></li>
             <li><strong>Tidal</strong> — <a href="https://developer.tidal.com/" target="_blank" rel="noreferrer">developer.tidal.com</a></li>
           </ul>
           <p style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 8 }}>{t('downloads.buildInstructions.apiOptional')}</p>
@@ -567,6 +600,7 @@ export function DownloadSection() {
                 <SourceContent />
               ) : tabDownloads.length > 0 ? (
                 <div className="download-list">
+                  {activeTab === 'debian' && <AptRepoSection />}
                   {tabDownloads.map((item) => (
                     <ItemView key={`${item.type}-${item.fileName}`} item={item} />
                   ))}
