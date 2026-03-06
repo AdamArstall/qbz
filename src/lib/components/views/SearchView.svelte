@@ -23,6 +23,9 @@
   let currentArtistPage = $state(0);
   let albumsPerPage = $state(5);
   let artistsPerPage = $state(5);
+  // Right-click context menu state
+  let contextMenuTrackId = $state<number | null>(null);
+  let contextMenuPos = $state<{ x: number; y: number } | null>(null);
   // NOTE: totalAlbumPages/totalArtistPages are defined after allResults declaration
 
   onMount(() => {
@@ -1666,6 +1669,11 @@
                     tabindex="0"
                     onclick={() => handleSearchTrackPlay(track, index)}
                     onkeydown={(e) => e.key === 'Enter' && handleSearchTrackPlay(track, index)}
+                    oncontextmenu={(e) => {
+                      e.preventDefault();
+                      contextMenuTrackId = track.id;
+                      contextMenuPos = { x: e.clientX, y: e.clientY };
+                    }}
                   >
                     <div class="track-number">{index + 1}</div>
                     <div class="track-artwork-container">
@@ -1748,6 +1756,8 @@
                         isTrackDownloaded={isTrackDownloaded}
                         onReDownload={isTrackDownloaded && onTrackReDownload ? () => onTrackReDownload(track) : undefined}
                         onRemoveDownload={isTrackDownloaded && onTrackRemoveDownload ? () => onTrackRemoveDownload(track.id) : undefined}
+                        contextMenuPosition={contextMenuTrackId === track.id ? contextMenuPos : null}
+                        onContextMenuClosed={() => { contextMenuTrackId = null; contextMenuPos = null; }}
                       />
                     </div>
                   </div>
@@ -1849,6 +1859,11 @@
                     tabindex="0"
                     onclick={() => handleSearchTrackPlay(track, index)}
                     onkeydown={(e) => e.key === 'Enter' && handleSearchTrackPlay(track, index)}
+                    oncontextmenu={(e) => {
+                      e.preventDefault();
+                      contextMenuTrackId = track.id;
+                      contextMenuPos = { x: e.clientX, y: e.clientY };
+                    }}
                   >
                     <div class="track-number">{index + 1}</div>
                     <div class="track-artwork-container">
@@ -1929,6 +1944,8 @@
                         isTrackDownloaded={isTrackDownloaded}
                         onReDownload={isTrackDownloaded && onTrackReDownload ? () => onTrackReDownload(track) : undefined}
                         onRemoveDownload={isTrackDownloaded && onTrackRemoveDownload ? () => onTrackRemoveDownload(track.id) : undefined}
+                        contextMenuPosition={contextMenuTrackId === track.id ? contextMenuPos : null}
+                        onContextMenuClosed={() => { contextMenuTrackId = null; contextMenuPos = null; }}
                       />
                     </div>
                   </div>
