@@ -3,7 +3,6 @@
   import { invoke } from '@tauri-apps/api/core';
   import ViewTransition from '../ViewTransition.svelte';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
-  import { loadSavedTheme, stopFollowSystemTheme } from '$lib/app/bootstrap';
   import { writeText as copyToClipboard } from '@tauri-apps/plugin-clipboard-manager';
   import { ask, open as openFileDialog } from '@tauri-apps/plugin-dialog';
   import { ArrowLeft, ChevronRight, ChevronDown, ChevronUp, Loader2, Sun, Moon, SunMoon, Ban, AlertTriangle, RefreshCw } from 'lucide-svelte';
@@ -491,8 +490,7 @@
     'Dark':              { value: '',                 type: 'dark' },
     'OLED Black':        { value: 'oled',             type: 'dark' },
     'Light':             { value: 'light',            type: 'light' },
-    'System (Dark / Light)':     { value: 'follow-system',    type: 'dark' },
-    'Match Colors':      { value: 'auto',             type: 'dark' },
+    'System':            { value: 'auto',             type: 'dark' },
     // Dark themes
     'Warm':              { value: 'warm',             type: 'dark' },
     'Nord':              { value: 'nord',             type: 'dark' },
@@ -621,7 +619,7 @@
   function handleAutoThemeFailedSelectImage() {
     autoThemeFailedModal = false;
     autoThemeFailedMessage = '';
-    theme = 'Match Colors';
+    theme = 'System';
     autoThemeSource = 'image';
     void handleAutoThemeSelectImage();
   }
@@ -1257,11 +1255,8 @@
   onMount(() => {
     // Load theme (check for auto-theme first)
     const savedTheme = localStorage.getItem('qbz-theme') || '';
-    if (savedTheme === 'follow-system') {
-      theme = 'System (Dark / Light)';
-      loadSavedTheme();
-    } else if (savedTheme === 'auto') {
-      theme = 'Match Colors';
+    if (savedTheme === 'auto') {
+      theme = 'System';
       // Restore auto-theme preferences
       const prefs = getAutoThemePrefs();
       if (prefs) {
@@ -3526,7 +3521,7 @@
 
   function handleThemeChange(newTheme: string) {
     // If switching away from System, disable auto-theme
-    if (theme === 'Match Colors' && newTheme !== 'Match Colors') {
+    if (theme === 'System' && newTheme !== 'System') {
       disableAutoTheme();
       autoThemeSwatches = {};
       autoThemeDE = null;
@@ -3536,15 +3531,11 @@
 
     theme = newTheme;
 
-    if (newTheme === 'Match Colors') {
+    if (newTheme === 'System') {
       // Default source is 'system' (accent first, wallpaper fallback)
       autoThemeSource = 'system';
       void handleAutoThemeGenerate();
-    } else if (newTheme === 'System (Dark / Light)') {
-      localStorage.setItem('qbz-theme', 'follow-system');
-      loadSavedTheme();
     } else {
-      stopFollowSystemTheme();
       const themeValue = themeMap[newTheme] || '';
       applyTheme(themeValue);
       localStorage.setItem('qbz-theme', themeValue);
@@ -4011,7 +4002,7 @@
     {/if}
 
     <!-- Auto-Theme controls (visible when System theme is selected) -->
-    {#if theme === 'Match Colors'}
+    {#if theme === 'System'}
       <div class="auto-theme-panel">
         <div class="setting-row">
           <div class="setting-info">

@@ -21,38 +21,12 @@
     appliedAutoThemeVarNames = [];
   }
 
-  let followSystemCleanup: (() => void) | null = null;
-
-  function stopFollowSystem(): void {
-    followSystemCleanup?.();
-    followSystemCleanup = null;
-  }
-
-  function startFollowSystem(): void {
-    stopFollowSystem();
-    const root = document.documentElement;
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const apply = () => {
-      if (mq.matches) {
-        root.removeAttribute('data-theme');
-      } else {
-        root.setAttribute('data-theme', 'light');
-      }
-    };
-    apply();
-    mq.addEventListener('change', apply);
-    followSystemCleanup = () => mq.removeEventListener('change', apply);
-  }
-
   function applyThemeFromStorage(): void {
     const root = document.documentElement;
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) ?? '';
     const savedFont = localStorage.getItem(FONT_STORAGE_KEY) ?? '';
 
-    stopFollowSystem();
-    if (savedTheme === 'follow-system') {
-      startFollowSystem();
-    } else if (savedTheme) {
+    if (savedTheme) {
       root.setAttribute('data-theme', savedTheme);
     } else {
       root.removeAttribute('data-theme');
@@ -103,7 +77,6 @@
     return () => {
       window.removeEventListener('storage', handleStorage);
       clearAutoThemeVars();
-      stopFollowSystem();
     };
   });
 </script>
