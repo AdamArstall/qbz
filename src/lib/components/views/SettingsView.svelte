@@ -5792,15 +5792,6 @@ flatpak override --user --filesystem=/home/USUARIO/Música com.blitzfc.qbz</pre>
     border: 1px solid rgba(239, 68, 68, 0.3);
   }
 
-  .experimental-inline {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    color: var(--text-muted);
-    opacity: 0.7;
-  }
-
   .subsection-title {
     font-size: 13px;
     font-weight: 600;
