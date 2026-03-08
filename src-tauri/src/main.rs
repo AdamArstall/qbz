@@ -474,14 +474,15 @@ fn main() {
             // --- Compositing mode ---
             // NVIDIA on Wayland has protocol errors with compositing.
             // AMD/Intel on native Wayland can handle compositing fine.
-            if is_wayland && !force_x11 && has_nvidia && !has_amd {
+            // If user forced DMA-BUF on, they want full GPU — skip compositing disable too.
+            if is_wayland && !force_x11 && has_nvidia && !has_amd && !force_dmabuf {
                 std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
                 qbz_nix_lib::logging::log_startup(
                     "[QBZ] Wayland+NVIDIA: compositing mode disabled (prevents protocol errors)",
                 );
             } else if is_wayland && !force_x11 {
                 qbz_nix_lib::logging::log_startup(
-                    "[QBZ] Wayland: compositing mode enabled (AMD/Intel native)",
+                    "[QBZ] Wayland: compositing mode enabled",
                 );
             }
 
