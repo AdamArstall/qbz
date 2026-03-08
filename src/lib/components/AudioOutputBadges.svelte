@@ -182,15 +182,19 @@
       castProtocol = getConnectedProtocol();
     });
 
-    // Lightweight polling: ONLY update hardware status (no device enumeration)
-    // This reads /proc/asound which is very cheap, no CPAL/ALSA enumeration
+    // Lightweight polling: update hardware status + output device name
     const pollInterval = setInterval(async () => {
       // Only poll if using bit-perfect modes AND not casting
       if (!castConnected && (settings?.dac_passthrough || settings?.backend_type === 'Alsa')) {
         try {
-          hardwareStatus = await invoke<HardwareAudioStatus>('v2_get_hardware_audio_status').catch(() => null);
-        } catch (err) {
-          // Silently fail - don't spam console
+          const [hwStatus, status] = await Promise.all([
+            invoke<HardwareAudioStatus>('v2_get_hardware_audio_status').catch(() => null),
+            invoke<AudioOutputStatus>('get_audio_output_status').catch(() => null),
+          ]);
+          hardwareStatus = hwStatus;
+          if (status) outputStatus = status;
+        } catch {
+          // Silently fail
         }
       }
     }, 1000);
