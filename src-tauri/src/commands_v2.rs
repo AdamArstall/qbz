@@ -11533,7 +11533,14 @@ fn normalize_artist_name(name: &str) -> String {
 /// 2. Search MB for artists tagged with the primary genre tag
 /// 3. Filter: seed artist, known similar artists, local listening history
 /// 4. Resolve on Qobuz (verify exact name match to avoid homonyms)
-/// 5. Return top 6, minimum 5
+/// 5. Return top 8, minimum 5 (frontend shows 6, keeps 2 reserves)
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveryResponse {
+    pub artists: Vec<crate::listenbrainz::DiscoveryArtist>,
+    pub primary_tag: String,
+}
+
 #[tauri::command]
 #[allow(non_snake_case)]
 pub async fn v2_get_discovery_artists(
@@ -11544,7 +11551,7 @@ pub async fn v2_get_discovery_artists(
     reco_state: State<'_, RecoState>,
     bridge: State<'_, CoreBridgeState>,
     blacklist_state: State<'_, BlacklistState>,
-) -> Result<Vec<crate::listenbrainz::DiscoveryArtist>, String> {
+) -> Result<DiscoveryResponse, String> {
     log::info!(
         "[Discovery] Starting pipeline for {} (MBID: {})",
         seedArtistName,
@@ -11554,7 +11561,7 @@ pub async fn v2_get_discovery_artists(
     // Step 1: Check MB is enabled
     if !musicbrainz.client.is_enabled().await {
         log::warn!("[Discovery] MusicBrainz is disabled, returning empty");
-        return Ok(Vec::new());
+        return Ok(DiscoveryResponse { artists: Vec::new(), primary_tag: String::new() });
     }
 
     // Step 2: Get seed artist's primary genre tag
@@ -11566,7 +11573,7 @@ pub async fn v2_get_discovery_artists(
 
     if seed_tags.is_empty() {
         log::warn!("[Discovery] No tags found for seed artist, returning empty");
-        return Ok(Vec::new());
+        return Ok(DiscoveryResponse { artists: Vec::new(), primary_tag: String::new() });
     }
 
     let primary_tag = &seed_tags[0];
@@ -11591,7 +11598,7 @@ pub async fn v2_get_discovery_artists(
     );
 
     if mb_results.artists.is_empty() {
-        return Ok(Vec::new());
+        return Ok(DiscoveryResponse { artists: Vec::new(), primary_tag: primary_tag.to_string() });
     }
 
     // Step 4: Build exclusion sets
@@ -11634,6 +11641,27 @@ pub async fn v2_get_discovery_artists(
         }
     };
 
+    // Step 4b: Load dismissed artists for this tag
+    let dismissed_names: HashSet<String> = {
+        let guard = reco_state.db.lock().await;
+        if let Some(db) = guard.as_ref() {
+            db.get_dismissed_artists_for_tag(&primary_tag.to_lowercase())
+                .unwrap_or_default()
+                .into_iter()
+                .collect()
+        } else {
+            HashSet::new()
+        }
+    };
+
+    if !dismissed_names.is_empty() {
+        log::debug!(
+            "[Discovery] {} dismissed artists for tag '{}'",
+            dismissed_names.len(),
+            primary_tag
+        );
+    }
+
     // Step 5: Filter MB results
     let mut candidates: Vec<(String, String)> = Vec::new(); // (mbid, name)
 
@@ -11651,6 +11679,10 @@ pub async fn v2_get_discovery_artists(
         }
         // Skip locally known artists
         if local_known_names.contains(&normalized) {
+            continue;
+        }
+        // Skip dismissed artists for this tag
+        if dismissed_names.contains(&normalized) {
             continue;
         }
         candidates.push((artist.id.clone(), artist.name.clone()));
@@ -11681,7 +11713,7 @@ pub async fn v2_get_discovery_artists(
     let bridge_guard = bridge.try_get().await;
     let mut results: Vec<crate::listenbrainz::DiscoveryArtist> = Vec::new();
     let min_results = 5;
-    let max_results = 6;
+    let max_results = 8;
 
     if let Some(ref core_bridge) = bridge_guard {
         for (mbid, name) in &candidates {
@@ -11722,7 +11754,7 @@ pub async fn v2_get_discovery_artists(
         }
     } else {
         log::warn!("[Discovery] CoreBridge not available");
-        return Ok(Vec::new());
+        return Ok(DiscoveryResponse { artists: Vec::new(), primary_tag: primary_tag.to_string() });
     }
 
     // Step 7: If not enough results with primary tag, try secondary tag
@@ -11733,6 +11765,19 @@ pub async fn v2_get_discovery_artists(
             results.len(),
             secondary_tag
         );
+
+        // Load dismissals for secondary tag too
+        let secondary_dismissed: HashSet<String> = {
+            let guard = reco_state.db.lock().await;
+            if let Some(db) = guard.as_ref() {
+                db.get_dismissed_artists_for_tag(&secondary_tag.to_lowercase())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .collect()
+            } else {
+                HashSet::new()
+            }
+        };
 
         if let Ok(secondary_results) = musicbrainz
             .client
@@ -11753,6 +11798,8 @@ pub async fn v2_get_discovery_artists(
                 }
                 if similar_names_set.contains(&normalized)
                     || local_known_names.contains(&normalized)
+                    || dismissed_names.contains(&normalized)
+                    || secondary_dismissed.contains(&normalized)
                 {
                     continue;
                 }
@@ -11819,5 +11866,28 @@ pub async fn v2_get_discovery_artists(
     }
 
     log::info!("[Discovery] Returning {} discovery artists", results.len());
-    Ok(results)
+    Ok(DiscoveryResponse { artists: results, primary_tag: primary_tag.to_string() })
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn v2_dismiss_discovery_artist(
+    tag: String,
+    artistName: String,
+    reco_state: State<'_, RecoState>,
+) -> Result<(), String> {
+    let normalized = normalize_artist_name(&artistName);
+    let tag_lower = tag.to_lowercase();
+
+    log::info!(
+        "[Discovery] Dismissing '{}' for tag '{}'",
+        normalized,
+        tag_lower
+    );
+
+    let guard = reco_state.db.lock().await;
+    if let Some(db) = guard.as_ref() {
+        db.dismiss_discovery_artist(&tag_lower, &normalized)?;
+    }
+    Ok(())
 }

@@ -101,6 +101,7 @@ impl RecoStoreDb {
         // Migrations - run after base schema
         self.migrate_add_genre_id()?;
         self.migrate_add_meta_tables()?;
+        self.migrate_add_discovery_dismissals()?;
 
         Ok(())
     }
@@ -881,6 +882,62 @@ impl RecoStoreDb {
                 .push(row.map_err(|e| format!("Failed to read known artist name row: {}", e))?);
         }
         Ok(artists)
+    }
+
+    // ============ Discovery Dismissals ============
+
+    /// Migration to add discovery_dismissals table
+    fn migrate_add_discovery_dismissals(&self) -> Result<(), String> {
+        self.conn
+            .execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS discovery_dismissals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tag TEXT NOT NULL,
+                    artist_name_normalized TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    UNIQUE(tag, artist_name_normalized)
+                );
+                CREATE INDEX IF NOT EXISTS idx_discovery_dismissals_tag
+                    ON discovery_dismissals(tag);
+                "#,
+            )
+            .map_err(|e| format!("Failed to create discovery_dismissals table: {}", e))?;
+        Ok(())
+    }
+
+    /// Dismiss an artist for a specific tag (genre context)
+    pub fn dismiss_discovery_artist(&self, tag: &str, artist_name_normalized: &str) -> Result<(), String> {
+        let created_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO discovery_dismissals (tag, artist_name_normalized, created_at) VALUES (?, ?, ?)",
+                params![tag, artist_name_normalized, created_at],
+            )
+            .map_err(|e| format!("Failed to dismiss discovery artist: {}", e))?;
+        Ok(())
+    }
+
+    /// Get all dismissed artist names for a specific tag
+    pub fn get_dismissed_artists_for_tag(&self, tag: &str) -> Result<Vec<String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT artist_name_normalized FROM discovery_dismissals WHERE tag = ?")
+            .map_err(|e| format!("Failed to prepare dismissed artists query: {}", e))?;
+
+        let rows = stmt
+            .query_map(params![tag], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("Failed to query dismissed artists: {}", e))?;
+
+        let mut names = Vec::new();
+        for row in rows {
+            names.push(row.map_err(|e| format!("Failed to read dismissed artist row: {}", e))?);
+        }
+        Ok(names)
     }
 
     /// Clear all meta caches so entries re-resolve with fresh image URLs.

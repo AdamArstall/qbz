@@ -295,7 +295,8 @@
     "customImageRemoved": "Imagen personalizada eliminada",
     "customImageError": "Error al actualizar imagen del artista",
     "imageSaved": "Imagen del artista guardada",
-    "youMayAlsoLike": "TAMBIÉN TE PUEDE GUSTAR"
+    "youMayAlsoLike": "TAMBIÉN TE PUEDE GUSTAR",
+    "dismissRecommendation": "No es una buena recomendación"
   },
   "sort": {
     "nameAZ": "Nombre (A-Z)",

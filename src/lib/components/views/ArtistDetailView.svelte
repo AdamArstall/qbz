@@ -5,7 +5,7 @@
   import { setCustomImage, removeCustomImage as removeCustomImageFromStore } from '$lib/stores/customArtistImageStore';
   import { t } from 'svelte-i18n';
   import { cachedSrc } from '$lib/actions/cachedImage';
-  import { ArrowLeft, User, ChevronDown, ChevronUp, Play, Music, Heart, Search, X, ChevronLeft, ChevronRight, Radio, MoreHorizontal, Info, Disc, Settings, CheckSquare, PanelRightClose } from 'lucide-svelte';
+  import { ArrowLeft, User, ChevronDown, ChevronUp, Play, Music, Heart, Search, X, ChevronLeft, ChevronRight, Radio, MoreHorizontal, Info, Disc, Settings, CheckSquare, PanelRightClose, ThumbsDown } from 'lucide-svelte';
   import {
     isBlacklisted,
     isEnabled as isFilteringEnabled,
@@ -261,7 +261,7 @@
   let mbArtistMbid = $state<string | null>(null);
   let mbAvailable = $state(true); // Assume available until proven otherwise
 
-  // Discovery: "You may also like" (ListenBrainz)
+  // Discovery: "You may also like" (MusicBrainz tag-based)
   interface DiscoveryArtist {
     mbid: string;
     name: string;
@@ -270,7 +270,14 @@
     similarityPercent: number;
     qobuzId?: number;
   }
+  interface DiscoveryResponse {
+    artists: DiscoveryArtist[];
+    primaryTag: string;
+  }
+  const DISCOVERY_VISIBLE_COUNT = 6;
   let discoveryArtists = $state<DiscoveryArtist[]>([]);
+  let discoveryReserves = $state<DiscoveryArtist[]>([]);
+  let discoveryTag = $state('');
   let discoveryLoading = $state(false);
   let artistDetailEl = $state<HTMLDivElement | null>(null);
   let aboutSection = $state<HTMLDivElement | null>(null);
@@ -909,20 +916,50 @@
 
     discoveryLoading = true;
     discoveryArtists = [];
+    discoveryReserves = [];
+    discoveryTag = '';
 
     try {
       const similarNames = similarArtists.map(sa => sa.name);
-      const results = await invoke<DiscoveryArtist[]>('v2_get_discovery_artists', {
+      const response = await invoke<DiscoveryResponse>('v2_get_discovery_artists', {
         seedMbid: mbArtistMbid,
         seedArtistName: artist.name,
         similarArtistNames: similarNames
       });
-      discoveryArtists = results || [];
+      const all = response?.artists || [];
+      discoveryTag = response?.primaryTag || '';
+      discoveryArtists = all.slice(0, DISCOVERY_VISIBLE_COUNT);
+      discoveryReserves = all.slice(DISCOVERY_VISIBLE_COUNT);
     } catch (err) {
       console.error('Failed to load discovery artists:', err);
       discoveryArtists = [];
+      discoveryReserves = [];
     } finally {
       discoveryLoading = false;
+    }
+  }
+
+  async function dismissDiscoveryArtist(disc: DiscoveryArtist) {
+    if (!discoveryTag) return;
+
+    // Remove from visible list immediately
+    discoveryArtists = discoveryArtists.filter(a => a.mbid !== disc.mbid);
+
+    // Pull a reserve if available
+    if (discoveryReserves.length > 0) {
+      const replacement = discoveryReserves[0];
+      discoveryArtists = [...discoveryArtists, replacement];
+      discoveryReserves = discoveryReserves.slice(1);
+    }
+
+    // Persist the dismissal
+    try {
+      await invoke('v2_dismiss_discovery_artist', {
+        tag: discoveryTag,
+        artistName: disc.name
+      });
+    } catch (err) {
+      console.error('Failed to dismiss discovery artist:', err);
     }
   }
 
@@ -2678,7 +2715,7 @@
           </section>
         {/if}
 
-        <!-- Listeners also enjoy (ListenBrainz discovery) -->
+        <!-- Discovery: "You may also like" (MusicBrainz tag-based) -->
         {#if mbAvailable && (discoveryLoading || discoveryArtists.length > 0)}
           <section class="sidebar-section">
             <h4 class="section-label">{$t('artist.youMayAlsoLike')}</h4>
@@ -2686,15 +2723,24 @@
               {#if discoveryLoading}
                 <span class="placeholder-text">{$t('actions.loading')}</span>
               {:else}
-                {#each discoveryArtists as disc}
-                  <button
-                    class="sidebar-artist-link"
-                    onclick={() => disc.qobuzId && onTrackGoToArtist?.(disc.qobuzId)}
-                    title={disc.name}
-                  >
-                    <User size={12} />
-                    {disc.name}
-                  </button>
+                {#each discoveryArtists as disc (disc.mbid)}
+                  <div class="discovery-artist-row">
+                    <button
+                      class="sidebar-artist-link"
+                      onclick={() => disc.qobuzId && onTrackGoToArtist?.(disc.qobuzId)}
+                      title={disc.name}
+                    >
+                      <User size={12} />
+                      {disc.name}
+                    </button>
+                    <button
+                      class="discovery-dismiss-btn"
+                      onclick={() => dismissDiscoveryArtist(disc)}
+                      title={$t('artist.dismissRecommendation')}
+                    >
+                      <ThumbsDown size={12} />
+                    </button>
+                  </div>
                 {/each}
               {/if}
             </div>
@@ -2897,6 +2943,45 @@
   }
 
   .sidebar-artist-link:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .discovery-artist-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .discovery-artist-row .sidebar-artist-link {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .discovery-dismiss-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 150ms ease, background 150ms ease, color 150ms ease;
+  }
+
+  .discovery-artist-row:hover .discovery-dismiss-btn {
+    opacity: 1;
+  }
+
+  .discovery-dismiss-btn:hover {
     background: var(--bg-tertiary);
     color: var(--text-primary);
   }

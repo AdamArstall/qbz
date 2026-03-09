@@ -283,7 +283,8 @@
     "customImageRemoved": "Image personnalisée supprimée",
     "customImageError": "Erreur lors de la mise à jour de l'image",
     "imageSaved": "Image de l'artiste enregistrée",
-    "youMayAlsoLike": "VOUS AIMEREZ AUSSI"
+    "youMayAlsoLike": "VOUS AIMEREZ AUSSI",
+    "dismissRecommendation": "Pas une bonne recommandation"
   },
   "sort": {
     "nameAZ": "Nom (A-Z)",
