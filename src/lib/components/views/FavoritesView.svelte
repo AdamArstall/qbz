@@ -2588,6 +2588,13 @@
     overflow: hidden;
   }
 
+  /* Extra scroll space at bottom so navigate-to-top button doesn't cover last item */
+  .virtualized-container :global(.virtual-container),
+  .virtualized-album-grid-container :global(.virtual-container),
+  .virtualized-artist-grid-container :global(.virtual-container) {
+    padding-bottom: 80px;
+  }
+
   .alpha-index {
     position: sticky;
     top: 120px;
