@@ -39,6 +39,7 @@
     genre_summary: string;
     total_candidates: number;
     has_more: boolean;
+    next_offset: number;
   }
 
   interface FavoriteArtist {
@@ -69,6 +70,7 @@
   let genreSummary = $state('');
   let totalCandidates = $state(0);
   let hasMore = $state(false);
+  let nextOffset = $state(0);
   let loadingMore = $state(false);
 
   // Dynamic loading state
@@ -141,12 +143,16 @@
       if (offset === 0) {
         artists = response.artists;
       } else {
-        artists = [...artists, ...response.artists];
+        // Deduplicate: filter out artists already displayed (by qobuz_id or mbid)
+        const existingIds = new Set(artists.map((a) => a.mbid));
+        const newArtists = response.artists.filter((a) => !existingIds.has(a.mbid));
+        artists = [...artists, ...newArtists];
       }
       sceneLabel = response.scene_label;
       genreSummary = response.genre_summary;
       totalCandidates = response.total_candidates;
       hasMore = response.has_more;
+      nextOffset = response.next_offset;
     } catch (err) {
       console.error('[ArtistsByLocationView] Discovery failed:', err);
       error = String(err);
@@ -156,7 +162,7 @@
   async function loadMore() {
     if (loadingMore || !hasMore) return;
     loadingMore = true;
-    await discoverArtists(artists.length);
+    await discoverArtists(nextOffset);
     loadingMore = false;
   }
 

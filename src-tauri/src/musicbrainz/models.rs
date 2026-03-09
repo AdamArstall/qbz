@@ -631,6 +631,8 @@ pub struct LocationDiscoveryResponse {
     pub total_candidates: usize,
     /// Whether more results can be loaded
     pub has_more: bool,
+    /// The MB-level offset for the next page (accounts for validation filtering)
+    pub next_offset: usize,
 }
 
 // ============ Musician Types ============

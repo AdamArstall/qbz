@@ -8770,15 +8770,15 @@ pub async fn v2_musicbrainz_get_artist_metadata(
     mbid: String,
     state: State<'_, MusicBrainzSharedState>,
 ) -> Result<crate::musicbrainz::ArtistMetadata, String> {
-    // Check cache first
-    {
-        let cache_opt = state.cache.lock().await;
-        if let Some(cache) = cache_opt.as_ref() {
-            if let Some(cached) = cache.get_artist_metadata(&mbid)? {
-                return Ok(cached);
-            }
-        }
-    }
+    // Check cache first — TEMPORARILY DISABLED for tuning (display_name now includes resolution)
+    // {
+    //     let cache_opt = state.cache.lock().await;
+    //     if let Some(cache) = cache_opt.as_ref() {
+    //         if let Some(cached) = cache.get_artist_metadata(&mbid)? {
+    //             return Ok(cached);
+    //         }
+    //     }
+    // }
 
     // Fetch from MB API (reuses the same endpoint as relationships)
     let artist = state.client.get_artist_with_relations(&mbid).await?;
@@ -8965,6 +8965,7 @@ pub async fn v2_discover_artists_by_location(
             genre_summary: String::new(),
             total_candidates: 0,
             has_more: false,
+            next_offset: 0,
         });
     }
 
@@ -9079,8 +9080,8 @@ pub async fn v2_discover_artists_by_location(
         })
         .collect();
 
-    // Sort by score descending
-    scored.sort_by(|a, b| b.3.cmp(&a.3));
+    // Sort by score descending, then by mbid for stable ordering across paginated calls
+    scored.sort_by(|a, b| b.3.cmp(&a.3).then_with(|| a.0.cmp(&b.0)));
 
     // Apply offset and limit
     let total_candidates = scored.len();
@@ -9169,7 +9170,8 @@ pub async fn v2_discover_artists_by_location(
 
     let scene_label = format!("{} scene", display_name);
     let genre_sum = genre_summary(&source_seeds);
-    let has_more = offset + candidates_to_validate.len() < total_candidates;
+    let next_offset = offset + candidates_to_validate.len();
+    let has_more = next_offset < total_candidates;
 
     let response = LocationDiscoveryResponse {
         artists: validated,
@@ -9177,6 +9179,7 @@ pub async fn v2_discover_artists_by_location(
         genre_summary: genre_sum,
         total_candidates,
         has_more,
+        next_offset,
     };
 
     // Cache the full response — TEMPORARILY DISABLED for tuning
