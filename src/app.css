@@ -1,10 +1,29 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400&family=LINE+Seed+JP:wght@400;700&family=Oswald:wght@400;500;600;700&display=swap');
-
 /* Bundled fonts */
 @font-face {
   font-family: 'Montserrat';
   src: url('/fonts/Montserrat-VariableFont_wght.ttf') format('truetype');
   font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'LINE Seed JP';
+  src: url('/fonts/LINESeedJP-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Oswald';
+  src: url('/fonts/Oswald-VariableFont_wght.ttf') format('truetype');
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Regular.ttf') format('truetype');
+  font-weight: 400;
   font-display: swap;
 }
 
