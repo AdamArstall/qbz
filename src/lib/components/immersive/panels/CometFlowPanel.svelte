@@ -80,6 +80,99 @@
   let previousHigh = 0;
   let beatCooldown = 0;
 
+  // Album art color extraction
+  const DEFAULT_PALETTE = [356, 196, 280, 30]; // warm red, cyan, purple, orange
+  let artPalette: number[] = [...DEFAULT_PALETTE];
+  let paletteTarget: number[] = [...DEFAULT_PALETTE];
+  let currentArtwork = '';
+
+  function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    if (max === min) return [0, 0, l];
+    const d = max - min;
+    const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    let h = 0;
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+    return [h * 360, s, l];
+  }
+
+  function extractPalette(img: HTMLImageElement) {
+    const size = 32;
+    const sampleCanvas = document.createElement('canvas');
+    sampleCanvas.width = size;
+    sampleCanvas.height = size;
+    const sCtx = sampleCanvas.getContext('2d');
+    if (!sCtx) return;
+
+    sCtx.drawImage(img, 0, 0, size, size);
+    const data = sCtx.getImageData(0, 0, size, size).data;
+
+    // Bucket hues into 12 sectors (30° each), weighted by saturation and away from gray
+    const buckets = new Float32Array(12);
+    const bucketHueSum = new Float32Array(12);
+    const bucketCount = new Float32Array(12);
+
+    for (let i = 0; i < data.length; i += 4) {
+      const [h, s, l] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+      if (s < 0.12 || l < 0.08 || l > 0.92) continue; // skip grays
+      const bucket = Math.floor(h / 30) % 12;
+      const weight = s * (0.5 + Math.abs(l - 0.5)); // prefer saturated, non-mid colors
+      buckets[bucket] += weight;
+      bucketHueSum[bucket] += h * weight;
+      bucketCount[bucket] += weight;
+    }
+
+    // Pick top 4 buckets
+    const indexed = Array.from(buckets).map((w, i) => ({ w, i }));
+    indexed.sort((a, b) => b.w - a.w);
+
+    const extracted: number[] = [];
+    for (let j = 0; j < Math.min(4, indexed.length); j++) {
+      const idx = indexed[j].i;
+      if (bucketCount[idx] > 0) {
+        extracted.push(Math.round(bucketHueSum[idx] / bucketCount[idx]));
+      }
+    }
+
+    // Fill remaining slots with defaults if needed
+    while (extracted.length < 4) {
+      extracted.push(DEFAULT_PALETTE[extracted.length]);
+    }
+
+    paletteTarget = extracted;
+  }
+
+  function loadArtworkPalette(src: string) {
+    if (!src || src === currentArtwork) return;
+    currentArtwork = src;
+    const img = new window.Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => extractPalette(img);
+    img.onerror = () => { paletteTarget = [...DEFAULT_PALETTE]; };
+    img.src = src;
+  }
+
+  // Smoothly interpolate palette hues toward target each frame
+  function lerpPalette() {
+    for (let i = 0; i < 4; i++) {
+      let diff = paletteTarget[i] - artPalette[i];
+      // Shortest path around hue circle
+      if (diff > 180) diff -= 360;
+      if (diff < -180) diff += 360;
+      artPalette[i] = wrapHue(artPalette[i] + diff * 0.02);
+    }
+  }
+
+  // Get palette hue with time-based mutation
+  function palHue(index: number, timeMs: number, drift: number = 18): number {
+    const base = artPalette[index % 4];
+    return wrapHue(base + Math.sin(timeMs * 0.0008 + index * 2.1) * drift);
+  }
+
   function clamp01(value: number): number {
     return Math.max(0, Math.min(1, value));
   }
@@ -105,15 +198,16 @@
   }
 
   function createWisp(intensity: number = 0.5): TunnelWisp {
-    const colorFamilies = [2, 8, 14, 20, 190, 206];
-    const family = colorFamilies[Math.floor(Math.random() * colorFamilies.length)];
+    // Pick from album-derived palette with random spread
+    const palIdx = Math.floor(Math.random() * 4);
+    const baseHue = artPalette[palIdx];
     return {
       depth: Math.random() * 0.22,
       angle: Math.random() * Math.PI * 2,
       speed: 0.002 + Math.random() * 0.004 + intensity * 0.008,
       width: 2.8 + Math.random() * 4.5 + intensity * 5.0,
       alpha: 0.25 + Math.random() * 0.3 + intensity * 0.35,
-      hue: wrapHue(family + (Math.random() - 0.5) * 16),
+      hue: wrapHue(baseHue + (Math.random() - 0.5) * 30),
       spin: (Math.random() - 0.5) * 0.012,
       curve: 0.05 + Math.random() * 0.14 + intensity * 0.09,
       phase: Math.random() * Math.PI * 2,
@@ -185,14 +279,15 @@
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    ctx.filter = `hue-rotate(22deg) saturate(${160 + bass * 130}%)`;
+    const chromaHueShift = Math.round(artPalette[0] - artPalette[1]) % 60;
+    ctx.filter = `hue-rotate(${chromaHueShift}deg) saturate(${160 + bass * 130}%)`;
     ctx.globalAlpha = 0.14 + bass * 0.14;
     ctx.drawImage(canvasRef, chromaOffset, -chromaOffset * 0.7, drawWidth, drawHeight);
     ctx.restore();
 
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    ctx.filter = `hue-rotate(-26deg) saturate(${150 + high * 150}%)`;
+    ctx.filter = `hue-rotate(${-chromaHueShift}deg) saturate(${150 + high * 150}%)`;
     ctx.globalAlpha = 0.12 + high * 0.16;
     ctx.drawImage(canvasRef, -chromaOffset * 0.8, chromaOffset * 0.7, drawWidth, drawHeight);
     ctx.restore();
@@ -222,8 +317,8 @@
       centerY,
       minDim * 1.08
     );
-    redFlood.addColorStop(0, `hsla(${wrapHue(4 + timeMs * 0.022)}, 96%, 44%, ${0.18 + bass * 0.16})`);
-    redFlood.addColorStop(0.45, `hsla(${wrapHue(356 + timeMs * 0.017)}, 96%, 36%, ${0.16 + mid * 0.12})`);
+    redFlood.addColorStop(0, `hsla(${palHue(0, timeMs, 22)}, 96%, 44%, ${0.18 + bass * 0.16})`);
+    redFlood.addColorStop(0.45, `hsla(${palHue(1, timeMs, 18)}, 96%, 36%, ${0.16 + mid * 0.12})`);
     redFlood.addColorStop(1, 'rgba(24, 0, 8, 0)');
     ctx.globalCompositeOperation = 'screen';
     ctx.fillStyle = redFlood;
@@ -244,12 +339,14 @@
 
       const radiusX = minDim * (0.17 + seed.scale * 0.26 + bass * 0.1 + travel * 0.12);
       const radiusY = minDim * (0.13 + seed.scale * 0.22 + high * 0.08 + travel * 0.1);
-      const warmHue = wrapHue(356 + Math.sin(timeMs * 0.0013 + seed.offset * 7) * 18 + bass * 28);
-      const coolHue = wrapHue(196 + Math.cos(timeMs * 0.0018 + seed.offset * 10) * 20 + high * 16);
-      const hue = seedIdx % 5 === 0 ? coolHue : warmHue;
+      const warmHue = wrapHue(palHue(0, timeMs, 24) + Math.sin(timeMs * 0.0013 + seed.offset * 7) * 18 + bass * 28);
+      const coolHue = wrapHue(palHue(1, timeMs, 20) + Math.cos(timeMs * 0.0018 + seed.offset * 10) * 20 + high * 16);
+      const mutantHue = wrapHue(palHue(2, timeMs, 16) + Math.sin(timeMs * 0.001 + seed.offset * 5) * 22);
+      const hue = seedIdx % 5 === 0 ? coolHue : seedIdx % 7 === 0 ? mutantHue : warmHue;
       const saturation = 70 + high * 20;
       const lightness = 38 + travel * 18 + mid * 8;
-      const alpha = 0.08 + (1 - travel) * (0.16 + bass * 0.18);
+      const cloudEnergy = clamp01((bass + mid + high) * 2.5);
+      const alpha = (0.08 + (1 - travel) * (0.16 + bass * 0.18)) * (0.1 + cloudEnergy * 0.9);
 
       const cloudGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radiusX * 1.25);
       cloudGradient.addColorStop(0, `hsla(${hue}, ${saturation}%, ${lightness + 8}%, ${alpha})`);
@@ -275,11 +372,14 @@
     timeMs: number,
     bass: number,
     mid: number,
-    high: number
+    high: number,
+    totalEnergy: number
   ) {
     if (!ctx) return;
     primeWisps();
 
+    // Fade wisps nearly out when silent
+    const energyGate = clamp01(totalEnergy * 3.0);
     ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -320,7 +420,7 @@
       const hue = wrapHue(wisp.hue + timeMs * 0.028 + Math.sin(timeMs * 0.0017 + wisp.phase) * 26);
       const saturation = 74 + high * 18;
       const lightness = 52 + bass * 20 + (1 - depthCurve) * 8;
-      const alpha = clamp01(wisp.alpha * (0.45 + bass * 0.6 + high * 0.15));
+      const alpha = clamp01(wisp.alpha * (0.45 + bass * 0.6 + high * 0.15) * (0.05 + energyGate * 0.95));
 
       const strokeGradient = ctx.createLinearGradient(sx, sy, ex, ey);
       strokeGradient.addColorStop(0, `hsla(${wrapHue(hue - 20)}, ${Math.max(30, saturation - 18)}%, ${lightness - 8}%, 0)`);
@@ -355,6 +455,7 @@
   ) {
     if (!ctx) return;
 
+    const ringEnergy = clamp01((bass + mid + high) * 2.5);
     const ringCount = 12;
     const tunnelSpin = timeMs * 0.00042 + phase * 0.03;
     ctx.globalCompositeOperation = 'screen';
@@ -372,9 +473,11 @@
       const rotation = tunnelSpin + ringIdx * 0.065 + Math.sin(timeMs * 0.0013 + ringIdx) * 0.18;
 
       const hue = ringIdx % 4 === 0
-        ? wrapHue(198 + Math.cos(timeMs * 0.0018 + ringIdx) * 18 + high * 18)
-        : wrapHue(356 + Math.sin(timeMs * 0.0015 + ringIdx * 0.7) * 14 + bass * 22);
-      const alpha = 0.08 + fade * (0.24 + bass * 0.35);
+        ? wrapHue(palHue(1, timeMs, 18) + Math.cos(timeMs * 0.0018 + ringIdx) * 18 + high * 18)
+        : ringIdx % 3 === 0
+          ? wrapHue(palHue(2, timeMs, 14) + Math.sin(timeMs * 0.0012 + ringIdx * 0.9) * 16 + mid * 20)
+          : wrapHue(palHue(0, timeMs, 14) + Math.sin(timeMs * 0.0015 + ringIdx * 0.7) * 14 + bass * 22);
+      const alpha = (0.08 + fade * (0.24 + bass * 0.35)) * (0.05 + ringEnergy * 0.95);
       const width = 1.6 + fade * (2.6 + bass * 3.5);
 
       ctx.beginPath();
@@ -395,28 +498,31 @@
     if (!ctx) return;
 
     const veilA = ctx.createLinearGradient(0, 0, drawWidth, drawHeight);
-    veilA.addColorStop(0, `hsla(${wrapHue(356 + timeMs * 0.028)}, 100%, 46%, ${0.08 + bass * 0.16})`);
+    veilA.addColorStop(0, `hsla(${palHue(0, timeMs, 28)}, 100%, 46%, ${0.08 + bass * 0.16})`);
     veilA.addColorStop(0.52, 'rgba(255, 48, 108, 0)');
-    veilA.addColorStop(1, `hsla(${wrapHue(204 + timeMs * 0.022)}, 100%, 50%, ${0.06 + high * 0.11})`);
+    veilA.addColorStop(1, `hsla(${palHue(1, timeMs, 22)}, 100%, 50%, ${0.06 + high * 0.11})`);
     ctx.globalCompositeOperation = 'overlay';
     ctx.fillStyle = veilA;
     ctx.fillRect(0, 0, drawWidth, drawHeight);
 
     const veilB = ctx.createLinearGradient(drawWidth, 0, 0, drawHeight);
-    veilB.addColorStop(0, `hsla(${wrapHue(196 + timeMs * 0.018)}, 90%, 48%, ${0.04 + high * 0.08})`);
+    veilB.addColorStop(0, `hsla(${palHue(2, timeMs, 18)}, 90%, 48%, ${0.04 + high * 0.08})`);
     veilB.addColorStop(0.5, 'rgba(28, 8, 24, 0)');
-    veilB.addColorStop(1, `hsla(${wrapHue(10 + timeMs * 0.015)}, 92%, 44%, ${0.06 + bass * 0.12})`);
+    veilB.addColorStop(1, `hsla(${palHue(3, timeMs, 15)}, 92%, 44%, ${0.06 + bass * 0.12})`);
     ctx.globalCompositeOperation = 'soft-light';
     ctx.fillStyle = veilB;
     ctx.fillRect(0, 0, drawWidth, drawHeight);
   }
 
-  function drawAbyss(centerX: number, centerY: number, minDim: number, bass: number) {
+  function drawAbyss(centerX: number, centerY: number, minDim: number, bass: number, totalEnergy: number) {
     if (!ctx) return;
-    const abyssRadius = minDim * (0.22 + bass * 0.08);
-    const abyss = ctx.createRadialGradient(centerX, centerY, minDim * 0.02, centerX, centerY, abyssRadius);
-    abyss.addColorStop(0, 'rgba(0, 0, 0, 0.98)');
-    abyss.addColorStop(0.45, `rgba(8, 0, 22, ${0.76 + bass * 0.1})`);
+    // Shrink black hole when silent, grow with bass
+    const energyScale = clamp01(totalEnergy * 2.5);
+    const abyssRadius = minDim * (0.04 + energyScale * 0.18 + bass * 0.08);
+    const abyssAlpha = 0.3 + energyScale * 0.68;
+    const abyss = ctx.createRadialGradient(centerX, centerY, minDim * 0.01, centerX, centerY, abyssRadius);
+    abyss.addColorStop(0, `rgba(0, 0, 0, ${abyssAlpha})`);
+    abyss.addColorStop(0.45, `rgba(8, 0, 22, ${(0.3 + energyScale * 0.46) + bass * 0.1})`);
     abyss.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = abyss;
@@ -456,18 +562,20 @@
     const mid = getMidEnergy();
     const high = getHighEnergy();
     phase += 0.004 + bass * 0.022 + high * 0.01;
+    lerpPalette();
     if (beatCooldown > 0) beatCooldown -= 1;
 
     drawFeedbackWarp(centerX, centerY, drawWidth, drawHeight, minDim, timestamp, bass, high);
 
-    ctx.fillStyle = `rgba(42, 0, 10, ${0.09 + high * 0.03})`;
+    ctx.fillStyle = `hsla(${wrapHue(artPalette[0] - 10)}, 60%, 6%, ${0.09 + high * 0.03})`;
     ctx.fillRect(0, 0, drawWidth, drawHeight);
 
+    const totalEnergy = (bass + mid + high) / 3;
     drawWatercolorClouds(centerX, centerY, minDim, timestamp, bass, mid, high);
     drawWarpedTunnelRings(centerX, centerY, minDim, timestamp, bass, mid, high);
-    drawCurvedTunnelWisps(centerX, centerY, minDim, timestamp, bass, mid, high);
+    drawCurvedTunnelWisps(centerX, centerY, minDim, timestamp, bass, mid, high, totalEnergy);
     drawRefractiveVeil(drawWidth, drawHeight, timestamp, bass, high);
-    drawAbyss(centerX, centerY, minDim, bass);
+    drawAbyss(centerX, centerY, minDim, bass, totalEnergy);
 
     ctx.globalCompositeOperation = 'source-over';
     animationFrame = requestAnimationFrame(render);
@@ -554,6 +662,12 @@
       init();
     } else if (!enabled && isInitialized) {
       cleanup();
+    }
+  });
+
+  $effect(() => {
+    if (artwork) {
+      loadArtworkPalette(artwork);
     }
   });
 </script>
