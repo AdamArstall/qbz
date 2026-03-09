@@ -304,7 +304,11 @@
     "loadingOrigin": "Loading origin...",
     "sceneFrom": "{location} scene",
     "sceneBased": "Based on {artist} · {genres}",
-    "noSceneResults": "No matching artists from this scene are currently available on Qobuz."
+    "noSceneResults": "No matching artists from this scene are currently available on Qobuz.",
+    "sceneStep1": "Searching MusicBrainz for {genre} artists...",
+    "sceneStep2": "Analyzing genre affinity across {count} candidates...",
+    "sceneStep3": "Verifying availability on Qobuz...",
+    "sceneStep4": "Preparing results..."
   },
   "sort": {
     "nameAZ": "Name (A-Z)",

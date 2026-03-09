@@ -384,6 +384,66 @@ impl MusicBrainzClient {
             .map_err(|e| format!("Failed to parse MusicBrainz response: {}", e))
     }
 
+    /// Search artists by tag AND area (genre + location combined).
+    ///
+    /// Uses MB Lucene query: `tag:"thrash metal" AND beginarea:"Los Angeles"`
+    /// This is much more precise than browse-all-then-filter.
+    pub async fn search_artists_by_tag_and_area(
+        &self,
+        tag: &str,
+        area_name: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<ArtistSearchResponse, String> {
+        if !self.is_enabled().await {
+            return Err("MusicBrainz integration is disabled".to_string());
+        }
+
+        self.rate_limiter.wait().await;
+
+        let base_url = self.base_url().await;
+        let limit = limit.min(100).max(1);
+        let query = format!(
+            "tag:\"{}\" AND (beginarea:\"{}\" OR area:\"{}\")",
+            Self::escape_query(tag),
+            Self::escape_query(area_name),
+            Self::escape_query(area_name),
+        );
+        let url = format!(
+            "{}/artist?query={}&fmt=json&limit={}&offset={}",
+            base_url,
+            urlencoding::encode(&query),
+            limit,
+            offset
+        );
+
+        log::debug!(
+            "MusicBrainz artist search by tag '{}' + area '{}' (limit {}, offset {})",
+            tag,
+            area_name,
+            limit,
+            offset
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("MusicBrainz request failed: {}", e))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(format!("MusicBrainz API error {}: {}", status, text));
+        }
+
+        response
+            .json::<ArtistSearchResponse>()
+            .await
+            .map_err(|e| format!("Failed to parse MusicBrainz response: {}", e))
+    }
+
     /// Search releases by barcode (UPC/EAN)
     pub async fn search_release_by_barcode(
         &self,

@@ -292,7 +292,11 @@
     "loadingOrigin": "Chargement de l'origine...",
     "sceneFrom": "Scène de {location}",
     "sceneBased": "Basé sur {artist} · {genres}",
-    "noSceneResults": "Aucun artiste de cette scène n'est actuellement disponible sur Qobuz."
+    "noSceneResults": "Aucun artiste de cette scène n'est actuellement disponible sur Qobuz.",
+    "sceneStep1": "Recherche d'artistes {genre} sur MusicBrainz...",
+    "sceneStep2": "Analyse de l'affinité de genre de {count} candidats...",
+    "sceneStep3": "Vérification de la disponibilité sur Qobuz...",
+    "sceneStep4": "Préparation des résultats..."
   },
   "sort": {
     "nameAZ": "Nom (A-Z)",

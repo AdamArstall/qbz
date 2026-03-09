@@ -8801,8 +8801,8 @@ pub async fn v2_musicbrainz_get_artist_metadata(
 ///
 /// Pipeline:
 /// 1. Check scene cache (30-day TTL)
-/// 2. Browse MB artists by area MBID (with tags)
-/// 3. Score candidates using genre affinity
+/// 2. For each source genre, search MB: tag:"genre" AND beginarea:"area"
+/// 3. Merge + deduplicate across genres, score with affinity
 /// 4. Validate top candidates against Qobuz catalog
 /// 5. Cache and return sorted results
 #[tauri::command]
@@ -8824,6 +8824,7 @@ pub async fn v2_discover_artists_by_location(
     use crate::musicbrainz::models::{
         AffinitySeeds, LocationCandidate, LocationDiscoveryResponse, Tag,
     };
+    use std::collections::HashMap;
 
     runtime
         .manager()
@@ -8849,167 +8850,188 @@ pub async fn v2_discover_artists_by_location(
             .collect(),
     };
 
-    // Step 1: Resolve area ID if not provided
-    let resolved_area_id = if let Some(ref aid) = area_id {
-        aid.clone()
-    } else {
-        // Search MB for the area by name
-        let area_response = state
-            .client
-            .search_area(&area_name, None)
-            .await
-            .map_err(|e| RuntimeError::Internal(format!("Area search failed: {}", e)))?;
+    // Build cache key from area + seeds — TEMPORARILY UNUSED
+    let _cache_key_area = area_id.as_deref().unwrap_or(&area_name);
+    let _cache_key = build_scene_cache_key(_cache_key_area, &source_seeds);
 
-        area_response
-            .areas
-            .first()
-            .map(|a| a.id.clone())
-            .ok_or_else(|| {
-                RuntimeError::Internal(format!("No area found for '{}'", area_name))
-            })?
+    // Step 1: Check scene cache — TEMPORARILY DISABLED for tuning
+    // if offset == 0 {
+    //     let cache_opt = state.cache.lock().await;
+    //     if let Some(cache) = cache_opt.as_ref() {
+    //         if let Ok(Some(cached)) = cache.get_scene_cache(&cache_key) {
+    //             log::info!(
+    //                 "[V2] Scene cache hit for {} ({} artists)",
+    //                 area_name,
+    //                 cached.artists.len()
+    //             );
+    //             return Ok(cached);
+    //         }
+    //     }
+    // }
+
+    // Step 2: Search MB for each genre + area combination
+    // This is the key insight: instead of browsing ALL artists from an area
+    // and hoping they have relevant tags, we search for artists that are BOTH
+    // tagged with the genre AND from the area.
+    let search_genres: Vec<&str> = if genres.is_empty() {
+        // If no genres, use tags as fallback
+        tags.iter().take(3).map(|s| s.as_str()).collect()
+    } else {
+        // Use all genres (typically up to 5) + top 2 tags for broader coverage
+        genres
+            .iter()
+            .chain(tags.iter().take(2))
+            .map(|s| s.as_str())
+            .collect()
     };
 
-    // Step 2: Check scene cache (only for offset=0, cached results include all candidates)
-    let cache_key = build_scene_cache_key(&resolved_area_id, &source_seeds);
-    if offset == 0 {
-        let cache_opt = state.cache.lock().await;
-        if let Some(cache) = cache_opt.as_ref() {
-            if let Ok(Some(cached)) = cache.get_scene_cache(&cache_key) {
+    if search_genres.is_empty() {
+        return Ok(LocationDiscoveryResponse {
+            artists: Vec::new(),
+            scene_label: format!("{} scene", area_name),
+            genre_summary: String::new(),
+            total_candidates: 0,
+            has_more: false,
+        });
+    }
+
+    // Deduplicate candidates across genre queries: mbid -> (name, score_sum, genre_hits, tags)
+    let mut candidate_map: HashMap<String, (String, i32, usize, Vec<String>)> = HashMap::new();
+    let per_genre_limit = 50; // Get up to 50 per genre query
+
+    for genre in &search_genres {
+        let search_result = state
+            .client
+            .search_artists_by_tag_and_area(genre, &area_name, per_genre_limit, 0)
+            .await;
+
+        match search_result {
+            Ok(response) => {
                 log::info!(
-                    "[V2] Scene cache hit for area {} ({} artists)",
+                    "[V2] tag:'{}' + area:'{}' returned {} artists",
+                    genre,
                     area_name,
-                    cached.artists.len()
+                    response.artists.len()
                 );
-                return Ok(cached);
+
+                for artist in &response.artists {
+                    // Skip the source artist
+                    if artist.id == source_mbid {
+                        continue;
+                    }
+
+                    let candidate_tags: Vec<String> = artist
+                        .tags
+                        .as_ref()
+                        .map(|tag_list| {
+                            tag_list
+                                .iter()
+                                .filter(|tag| tag.count.unwrap_or(0) > 0)
+                                .map(|tag| tag.name.clone())
+                                .collect()
+                        })
+                        .unwrap_or_default();
+
+                    let same_city = artist
+                        .begin_area
+                        .as_ref()
+                        .map(|ba| {
+                            ba.name.eq_ignore_ascii_case(&area_name)
+                                || area_id
+                                    .as_deref()
+                                    .map(|aid| ba.id == aid)
+                                    .unwrap_or(false)
+                        })
+                        .unwrap_or(false);
+
+                    let same_country = artist
+                        .area
+                        .as_ref()
+                        .map(|a| a.name.eq_ignore_ascii_case(&area_name))
+                        .unwrap_or(false);
+
+                    let score = compute_affinity_score(
+                        &candidate_tags,
+                        &source_seeds,
+                        same_city,
+                        same_country,
+                    );
+
+                    let entry = candidate_map
+                        .entry(artist.id.clone())
+                        .or_insert_with(|| (artist.name.clone(), 0, 0, Vec::new()));
+                    entry.1 += score;
+                    entry.2 += 1; // appeared in N genre queries = more relevant
+                    // Merge tags
+                    for tag in &candidate_tags {
+                        if !entry.3.contains(tag) {
+                            entry.3.push(tag.clone());
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "[V2] Genre+area search failed for tag:'{}' area:'{}': {}",
+                    genre,
+                    area_name,
+                    e
+                );
             }
         }
     }
 
-    // Step 3: Browse MB artists by area (fetch up to 100 per page, get enough for scoring)
-    let browse_limit = 100.min(limit + offset + 50); // Get extra for filtering
-    let browse_response = state
-        .client
-        .browse_artists_by_area(&resolved_area_id, browse_limit, offset)
-        .await
-        .map_err(|e| RuntimeError::Internal(format!("Browse failed: {}", e)))?;
-
-    let total_mb = browse_response.artist_count.unwrap_or(0) as usize;
-    let mb_artists = browse_response.artists;
-
     log::info!(
-        "[V2] Browse returned {} artists from area {} (total: {})",
-        mb_artists.len(),
-        area_name,
-        total_mb
+        "[V2] Merged {} unique candidates from {} genre queries",
+        candidate_map.len(),
+        search_genres.len()
     );
 
-    // Step 4: Score candidates
-    let mut scored: Vec<(String, String, Vec<String>, i32)> = Vec::new(); // (mbid, name, genres, score)
-
-    for artist in &mb_artists {
-        // Skip the source artist
-        if artist.id == source_mbid {
-            continue;
-        }
-
-        let candidate_tags: Vec<String> = artist
-            .tags
-            .as_ref()
-            .map(|tag_list| {
-                tag_list
+    // Step 3: Score and sort
+    // Final score = affinity_score + (genre_hit_count * 15) bonus for appearing in multiple queries
+    let mut scored: Vec<(String, String, Vec<String>, i32)> = candidate_map
+        .into_iter()
+        .map(|(mbid, (name, score, genre_hits, tag_list))| {
+            let candidate_seeds = extract_affinity_seeds(
+                &tag_list
                     .iter()
-                    .filter(|tag| tag.count.unwrap_or(0) > 0)
-                    .map(|tag| tag.name.clone())
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        // Determine location match for scoring
-        let same_city = artist
-            .begin_area
-            .as_ref()
-            .map(|ba| ba.id == resolved_area_id)
-            .unwrap_or(false);
-        let same_country = artist
-            .area
-            .as_ref()
-            .map(|a| a.id == resolved_area_id)
-            .unwrap_or(false)
-            || artist.country.is_some();
-
-        let score = compute_affinity_score(&candidate_tags, &source_seeds, same_city, same_country);
-
-        // Extract genre names for display
-        let candidate_seeds = extract_affinity_seeds(
-            &candidate_tags
-                .iter()
-                .map(|name| Tag {
-                    name: name.clone(),
-                    count: Some(1),
-                })
-                .collect::<Vec<_>>(),
-        );
-
-        scored.push((
-            artist.id.clone(),
-            artist.name.clone(),
-            candidate_seeds.genres,
-            score,
-        ));
-    }
+                    .map(|name| Tag {
+                        name: name.clone(),
+                        count: Some(1),
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            let multi_genre_bonus = ((genre_hits as i32) - 1) * 15;
+            (mbid, name, candidate_seeds.genres, score + multi_genre_bonus)
+        })
+        .collect();
 
     // Sort by score descending
     scored.sort_by(|a, b| b.3.cmp(&a.3));
 
-    // Take top candidates for Qobuz validation
-    let candidates_to_validate: Vec<_> = scored.iter().take(limit).cloned().collect();
+    // Apply offset and limit
+    let total_candidates = scored.len();
+    let candidates_to_validate: Vec<_> = scored
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .collect();
 
     log::info!(
-        "[V2] Scored {} candidates, validating top {} against Qobuz",
-        scored.len(),
-        candidates_to_validate.len()
+        "[V2] Validating {} candidates against Qobuz (total pool: {})",
+        candidates_to_validate.len(),
+        total_candidates
     );
 
-    // Step 5: Validate against Qobuz
+    // Step 4: Validate against Qobuz
     let bridge_guard = bridge.try_get().await;
     let mut validated: Vec<LocationCandidate> = Vec::new();
 
     if let Some(ref core_bridge) = bridge_guard {
         for (mbid, mb_name, candidate_genres, score) in &candidates_to_validate {
-            // Check Qobuz validation cache first
-            let name_normalized =
+            // Qobuz validation cache — TEMPORARILY DISABLED for tuning
+            let _name_normalized =
                 crate::musicbrainz::cache::MusicBrainzCache::normalize_name(mb_name);
-            let cached_validation = {
-                let cache_opt = state.cache.lock().await;
-                if let Some(cache) = cache_opt.as_ref() {
-                    cache.get_qobuz_validation(&name_normalized).ok().flatten()
-                } else {
-                    None
-                }
-            };
-
-            if let Some(cached_json) = cached_validation {
-                // Parse cached validation result
-                if let Ok(candidate) =
-                    serde_json::from_str::<LocationCandidate>(&cached_json)
-                {
-                    if candidate.qobuz_id.is_some() {
-                        let qobuz_id = candidate.qobuz_id.unwrap();
-                        if !blacklist_state.is_blacklisted(qobuz_id as u64) {
-                            validated.push(LocationCandidate {
-                                mbid: mbid.clone(),
-                                mb_name: mb_name.clone(),
-                                qobuz_id: candidate.qobuz_id,
-                                qobuz_name: candidate.qobuz_name,
-                                qobuz_image: candidate.qobuz_image,
-                                score: *score,
-                                genres: candidate_genres.clone(),
-                            });
-                        }
-                    }
-                    continue;
-                }
-            }
 
             // Search Qobuz for this artist
             match core_bridge.search_artists(mb_name, 1, 0, None).await {
@@ -9041,34 +9063,17 @@ pub async fn v2_discover_artists_by_location(
                                 genres: candidate_genres.clone(),
                             };
 
-                            // Cache the validation result
-                            if let Ok(json) = serde_json::to_string(&candidate) {
-                                let cache_opt = state.cache.lock().await;
-                                if let Some(cache) = cache_opt.as_ref() {
-                                    let _ =
-                                        cache.set_qobuz_validation(&name_normalized, &json);
-                                }
-                            }
+                            // Qobuz validation write cache — TEMPORARILY DISABLED
+                            // if let Ok(json) = serde_json::to_string(&candidate) {
+                            //     let cache_opt = state.cache.lock().await;
+                            //     if let Some(cache) = cache_opt.as_ref() {
+                            //         let _ = cache.set_qobuz_validation(&name_normalized, &json);
+                            //     }
+                            // }
 
                             validated.push(candidate);
                         } else {
-                            // Cache negative result
-                            let neg = LocationCandidate {
-                                mbid: mbid.clone(),
-                                mb_name: mb_name.clone(),
-                                qobuz_id: None,
-                                qobuz_name: None,
-                                qobuz_image: None,
-                                score: *score,
-                                genres: candidate_genres.clone(),
-                            };
-                            if let Ok(json) = serde_json::to_string(&neg) {
-                                let cache_opt = state.cache.lock().await;
-                                if let Some(cache) = cache_opt.as_ref() {
-                                    let _ =
-                                        cache.set_qobuz_validation(&name_normalized, &json);
-                                }
-                            }
+                            // Negative cache — TEMPORARILY DISABLED
                         }
                     }
                 }
@@ -9091,23 +9096,23 @@ pub async fn v2_discover_artists_by_location(
 
     let scene_label = format!("{} scene", area_name);
     let genre_sum = genre_summary(&source_seeds);
-    let has_more = offset + mb_artists.len() < total_mb;
+    let has_more = offset + candidates_to_validate.len() < total_candidates;
 
     let response = LocationDiscoveryResponse {
         artists: validated,
         scene_label,
         genre_summary: genre_sum,
-        total_candidates: total_mb,
+        total_candidates,
         has_more,
     };
 
-    // Cache the full response (only for offset=0)
-    if offset == 0 {
-        let cache_opt = state.cache.lock().await;
-        if let Some(cache) = cache_opt.as_ref() {
-            let _ = cache.set_scene_cache(&cache_key, &response);
-        }
-    }
+    // Cache the full response — TEMPORARILY DISABLED for tuning
+    // if offset == 0 && !response.artists.is_empty() {
+    //     let cache_opt = state.cache.lock().await;
+    //     if let Some(cache) = cache_opt.as_ref() {
+    //         let _ = cache.set_scene_cache(&cache_key, &response);
+    //     }
+    // }
 
     Ok(response)
 }

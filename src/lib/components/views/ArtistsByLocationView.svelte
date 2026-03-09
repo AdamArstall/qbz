@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { t } from '$lib/i18n';
   import { invoke } from '@tauri-apps/api/core';
-  import { ArrowLeft, Loader2, MapPin } from 'lucide-svelte';
+  import { ArrowLeft, Loader2, MapPin, Music } from 'lucide-svelte';
   import VirtualizedFavoritesArtistGrid from '../VirtualizedFavoritesArtistGrid.svelte';
 
   interface LocationContext {
@@ -71,6 +71,40 @@
   let hasMore = $state(false);
   let loadingMore = $state(false);
 
+  // Dynamic loading state
+  let loadingStep = $state(0);
+  let loadingStepTimer: ReturnType<typeof setInterval> | null = null;
+
+  const loadingSteps = [
+    () => {
+      const genre = context.affinitySeeds.genres[0] || context.affinitySeeds.tags[0] || 'music';
+      return $t('artist.sceneStep1', { values: { genre } });
+    },
+    () => {
+      const genres = context.affinitySeeds.genres.slice(0, 3);
+      const count = genres.length * 50;
+      return $t('artist.sceneStep2', { values: { count: String(count) } });
+    },
+    () => $t('artist.sceneStep3'),
+    () => $t('artist.sceneStep4'),
+  ];
+
+  function startLoadingAnimation() {
+    loadingStep = 0;
+    loadingStepTimer = setInterval(() => {
+      if (loadingStep < loadingSteps.length - 1) {
+        loadingStep++;
+      }
+    }, 3000);
+  }
+
+  function stopLoadingAnimation() {
+    if (loadingStepTimer) {
+      clearInterval(loadingStepTimer);
+      loadingStepTimer = null;
+    }
+  }
+
   function candidatesToGroups(candidates: LocationCandidate[]): ArtistGroup[] {
     const validArtists: FavoriteArtist[] = candidates
       .filter((candidate) => candidate.qobuz_id != null)
@@ -128,8 +162,14 @@
   onMount(async () => {
     loading = true;
     error = null;
+    startLoadingAnimation();
     await discoverArtists();
+    stopLoadingAnimation();
     loading = false;
+  });
+
+  onDestroy(() => {
+    stopLoadingAnimation();
   });
 </script>
 
@@ -161,13 +201,28 @@
   <div class="scene-content">
     {#if loading}
       <div class="scene-loading">
-        <Loader2 size={32} class="spin" />
-        <span>{$t('actions.loading')}</span>
+        <div class="loading-visual">
+          <div class="loading-pulse">
+            <Music size={28} />
+          </div>
+        </div>
+        <div class="loading-status">
+          {#key loadingStep}
+            <span class="loading-text fade-in">
+              {loadingSteps[loadingStep]()}
+            </span>
+          {/key}
+        </div>
+        <div class="loading-dots">
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+        </div>
       </div>
     {:else if error}
       <div class="scene-error">
         <p>{error}</p>
-        <button class="retry-button" onclick={() => { loading = true; error = null; discoverArtists().then(() => { loading = false; }); }}>
+        <button class="retry-button" onclick={() => { loading = true; error = null; startLoadingAnimation(); discoverArtists().then(() => { stopLoadingAnimation(); loading = false; }); }}>
           {$t('actions.retry')}
         </button>
       </div>
@@ -268,19 +323,104 @@
     flex-direction: column;
   }
 
+  /* Loading state with dynamic messages */
   .scene-loading {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    padding: 80px 0;
-    color: var(--text-muted);
-    font-size: 14px;
+    gap: 20px;
+    padding: 100px 0;
   }
 
-  :global(.scene-loading .spin) {
-    animation: spin 1s linear infinite;
+  .loading-visual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .loading-pulse {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--bg-secondary);
+    color: var(--accent-primary);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 0.8;
+    }
+    50% {
+      transform: scale(1.08);
+      opacity: 1;
+    }
+  }
+
+  .loading-status {
+    min-height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .loading-text {
+    font-size: 14px;
+    color: var(--text-secondary);
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  .fade-in {
+    animation: fadeIn 400ms ease-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .loading-dots {
+    display: flex;
+    gap: 6px;
+  }
+
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    animation: dotBounce 1.4s ease-in-out infinite;
+  }
+
+  .dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  @keyframes dotBounce {
+    0%, 80%, 100% {
+      opacity: 0.3;
+      transform: scale(0.8);
+    }
+    40% {
+      opacity: 1;
+      transform: scale(1);
+    }
   }
 
   .scene-error {
