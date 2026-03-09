@@ -8820,7 +8820,7 @@ pub async fn v2_discover_artists_by_location(
     blacklist_state: State<'_, BlacklistState>,
     runtime: State<'_, RuntimeManagerState>,
 ) -> Result<crate::musicbrainz::LocationDiscoveryResponse, RuntimeError> {
-    use crate::musicbrainz::genre_normalization::{extract_affinity_seeds, genre_summary};
+    use crate::musicbrainz::genre_normalization::{extract_affinity_seeds, genre_summary, is_broad_genre};
     use crate::musicbrainz::location_discovery::{build_scene_cache_key, compute_affinity_score};
     use crate::musicbrainz::models::{
         AffinitySeeds, LocationCandidate, LocationDiscoveryResponse, Tag,
@@ -8917,20 +8917,42 @@ pub async fn v2_discover_artists_by_location(
     // }
 
     // Step 2: Search MB for each genre + area combination
-    // This is the key insight: instead of browsing ALL artists from an area
-    // and hoping they have relevant tags, we search for artists that are BOTH
-    // tagged with the genre AND from the area.
+    // Filter out overly broad tags (latin, rock, pop, etc.) that return the entire
+    // country's catalog. These are kept for affinity scoring but not used as search queries.
     let search_genres: Vec<&str> = if genres.is_empty() {
-        // If no genres, use tags as fallback
-        tags.iter().take(3).map(|s| s.as_str()).collect()
+        tags.iter()
+            .filter(|s| !is_broad_genre(s.as_str()))
+            .take(3)
+            .map(|s| s.as_str())
+            .collect()
     } else {
-        // Use all genres (typically up to 5) + top 2 tags for broader coverage
         genres
             .iter()
             .chain(tags.iter().take(2))
+            .filter(|s| !is_broad_genre(s.as_str()))
             .map(|s| s.as_str())
             .collect()
     };
+
+    // If ALL genres were broad (edge case: artist tagged only "rock" + "pop"),
+    // fall back to using them anyway — some results are better than none
+    let search_genres: Vec<&str> = if search_genres.is_empty() {
+        log::warn!("[V2] All genres were broad, falling back to original list");
+        if genres.is_empty() {
+            tags.iter().take(3).map(|s| s.as_str()).collect()
+        } else {
+            genres.iter().take(3).map(|s| s.as_str()).collect()
+        }
+    } else {
+        search_genres
+    };
+
+    log::info!(
+        "[V2] Search genres after broad filter: {:?} (from genres={:?}, tags={:?})",
+        search_genres,
+        genres,
+        tags
+    );
 
     if search_genres.is_empty() {
         return Ok(LocationDiscoveryResponse {

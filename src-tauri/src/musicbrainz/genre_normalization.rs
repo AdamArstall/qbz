@@ -35,6 +35,18 @@ const NOISY_TAGS: &[&str] = &[
     "irish",
     "scottish",
     "korean",
+    "mexican",
+    "brazilian",
+    "colombian",
+    "argentinian",
+    "chilean",
+    "spanish",
+    "italian",
+    "dutch",
+    "russian",
+    "chinese",
+    "indian",
+    "african",
     "female vocalists",
     "male vocalists",
     "female vocalist",
@@ -45,6 +57,45 @@ const NOISY_TAGS: &[&str] = &[
     "check out",
     "spotify",
     "under 2000 listeners",
+];
+
+/// Overly broad genre tags that return too much noise when used as search queries.
+/// These are excluded from the search genres list but kept for affinity scoring.
+/// Example: In Mexico everything is "latin", in UK everything is "rock" — searching
+/// by these returns the entire country's catalog instead of scene-relevant artists.
+const BROAD_TAGS: &[&str] = &[
+    "rock",
+    "pop",
+    "latin",
+    "latin music",
+    "electronic",
+    "electronica",
+    "jazz",
+    "metal",
+    "hip hop",
+    "hip-hop",
+    "hiphop",
+    "rap",
+    "classical",
+    "classical music",
+    "folk",
+    "folk music",
+    "blues",
+    "blues music",
+    "country",
+    "country music",
+    "soul",
+    "funk",
+    "r&b",
+    "rnb",
+    "reggae",
+    "world",
+    "world music",
+    "experimental",
+    "dance",
+    "dance music",
+    "soundtrack",
+    "instrumental",
 ];
 
 /// Normalize genre/tag name to canonical form
@@ -124,6 +175,12 @@ pub fn normalize_genre(name: &str) -> String {
 fn is_noisy_tag(tag: &str) -> bool {
     let lower = tag.to_lowercase();
     NOISY_TAGS.iter().any(|noisy| lower == *noisy)
+}
+
+/// Check if a normalized genre is too broad to use as a search query.
+/// These tags are kept for affinity scoring but excluded from MB search queries.
+pub fn is_broad_genre(normalized: &str) -> bool {
+    BROAD_TAGS.iter().any(|broad| normalized == *broad)
 }
 
 /// Minimum vote count to consider a tag as a primary genre
