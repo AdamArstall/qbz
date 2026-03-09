@@ -364,6 +364,7 @@
   import WeeklySuggestView from '$lib/components/views/WeeklySuggestView.svelte';
   import FavQView from '$lib/components/views/FavQView.svelte';
   import TopQView from '$lib/components/views/TopQView.svelte';
+  import ArtistsByLocationView from '$lib/components/views/ArtistsByLocationView.svelte';
 
   // Overlays
   import QueuePanel from '$lib/components/QueuePanel.svelte';
@@ -499,6 +500,31 @@
   let selectedMusician = $state<ResolvedMusician | null>(null);
   let musicianModalData = $state<ResolvedMusician | null>(null);
   let isArtistAlbumsLoading = $state(false);
+
+  // Scene discovery state
+  interface ArtistsByLocationContext {
+    sourceArtistMbid: string;
+    sourceArtistName: string;
+    sourceArtistType: 'Person' | 'Group' | 'Other';
+    location: {
+      city?: string;
+      areaId?: string;
+      country?: string;
+      displayName: string;
+      precision: 'city' | 'state' | 'country';
+    };
+    affinitySeeds: {
+      genres: string[];
+      tags: string[];
+      normalizedSeeds: string[];
+    };
+  }
+  let artistsByLocationContext = $state<ArtistsByLocationContext | null>(null);
+
+  function handleLocationClick(ctx: ArtistsByLocationContext) {
+    artistsByLocationContext = ctx;
+    navigateTo('artists-by-location');
+  }
 
   // Track current itemId for scroll position save on navigation
   let currentNavItemId = $state<string | number | undefined>(undefined);
@@ -4054,6 +4080,7 @@
           onPlaylistClick={selectPlaylist}
           onLabelClick={handleLabelClick}
           onMusicianClick={handleMusicianClick}
+          onLocationClick={handleLocationClick}
           activeTrackId={currentTrack?.id ?? null}
           isPlaybackActive={isPlaying}
         />
@@ -4458,6 +4485,12 @@
           onAlbumPlay={playAlbumById}
           activeTrackId={currentTrack?.id}
           isPlaybackActive={isPlaying}
+        />
+      {:else if activeView === 'artists-by-location' && artistsByLocationContext}
+        <ArtistsByLocationView
+          context={artistsByLocationContext}
+          onBack={navGoBack}
+          onArtistClick={handleArtistClick}
         />
       {/if}
     </main>

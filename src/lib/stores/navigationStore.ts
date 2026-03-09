@@ -36,7 +36,8 @@ export type ViewType =
   | 'dailyq'
   | 'weeklyq'
   | 'favq'
-  | 'topq';
+  | 'topq'
+  | 'artists-by-location';
 export type FavoritesTab = 'tracks' | 'albums' | 'artists' | 'playlists';
 
 // History entry: view + optional item identifier for granular back/forward
