@@ -123,6 +123,7 @@
   {#if showDiscover}
   <div
     class="nav-btn-wrapper"
+    role="navigation"
     onmouseenter={openDiscover}
     onmouseleave={closeDiscoverDelayed}
   >
@@ -139,6 +140,7 @@
     {#if discoverOpen}
       <div
         class="dropdown"
+        role="menu"
         onmouseenter={keepDiscover}
         onmouseleave={closeDiscoverDelayed}
       >
@@ -172,6 +174,7 @@
   {#if showFavorites}
   <div
     class="nav-btn-wrapper"
+    role="navigation"
     onmouseenter={openFavorites}
     onmouseleave={closeFavoritesDelayed}
   >
@@ -188,6 +191,7 @@
     {#if favoritesOpen}
       <div
         class="dropdown"
+        role="menu"
         onmouseenter={keepFavorites}
         onmouseleave={closeFavoritesDelayed}
       >
@@ -229,6 +233,7 @@
   {#if showPurchases}
   <div
     class="nav-btn-wrapper"
+    role="navigation"
     onmouseenter={openPurchasesMenu}
     onmouseleave={closePurchasesDelayed}
   >
@@ -245,6 +250,7 @@
     {#if purchasesMenuOpen}
       <div
         class="dropdown"
+        role="menu"
         onmouseenter={keepPurchasesMenu}
         onmouseleave={closePurchasesDelayed}
       >
