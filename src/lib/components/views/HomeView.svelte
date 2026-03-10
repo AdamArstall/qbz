@@ -885,47 +885,48 @@
 </script>
 
 <div class="home-view" bind:this={homeViewEl} onscroll={handleHomeScroll}>
-  <!-- Sticky compact header (visible on scroll) -->
-  <div class="sticky-header" class:visible={isScrolled}>
-    <div class="sticky-tabs">
-      <button
-        class="home-tab compact"
-        class:active={activeTab === 'home'}
-        onclick={() => switchTab('home')}
-      >
-        <Home size={13} />
-      </button>
-      <button
-        class="home-tab compact"
-        class:active={activeTab === 'editorPicks'}
-        onclick={() => switchTab('editorPicks')}
-      >
-        {$t('home.tabEditorPicks')}
-      </button>
-      <button
-        class="home-tab compact"
-        class:active={activeTab === 'forYou'}
-        onclick={() => switchTab('forYou')}
-      >
-        {$t('home.tabForYou')}
-      </button>
-    </div>
-    <div class="sticky-actions">
-      {#if activeTab === 'home'}
-        <button class="settings-btn" onclick={() => isSettingsModalOpen = true} title={$t('home.customizeHome')}>
-          <img
-            src="/home-gear.svg"
-            alt="Settings"
-            class="settings-icon"
-            width="18"
-            height="18"
-            style="width:18px;height:18px;filter:invert(1) opacity(0.8);"
-          />
+  {#if isScrolled}
+    <div class="sticky-header">
+      <div class="sticky-tabs">
+        <button
+          class="home-tab compact"
+          class:active={activeTab === 'home'}
+          onclick={() => switchTab('home')}
+        >
+          <Home size={13} />
         </button>
-      {/if}
-      <GenreFilterButton onFilterChange={handleGenreFilterChange} context="home" variant="default" />
+        <button
+          class="home-tab compact"
+          class:active={activeTab === 'editorPicks'}
+          onclick={() => switchTab('editorPicks')}
+        >
+          {$t('home.tabEditorPicks')}
+        </button>
+        <button
+          class="home-tab compact"
+          class:active={activeTab === 'forYou'}
+          onclick={() => switchTab('forYou')}
+        >
+          {$t('home.tabForYou')}
+        </button>
+      </div>
+      <div class="sticky-actions">
+        {#if activeTab === 'home'}
+          <button class="settings-btn" onclick={() => isSettingsModalOpen = true} title={$t('home.customizeHome')}>
+            <img
+              src="/home-gear.svg"
+              alt="Settings"
+              class="settings-icon"
+              width="18"
+              height="18"
+              style="width:18px;height:18px;filter:invert(1) opacity(0.8);"
+            />
+          </button>
+        {/if}
+        <GenreFilterButton onFilterChange={handleGenreFilterChange} context="home" variant="default" />
+      </div>
     </div>
-  </div>
+  {/if}
 
   <!-- Header with greeting + centered tabs + actions -->
   <div class="home-header" class:scrolled={isScrolled}>
@@ -2026,28 +2027,29 @@
   .home-view {
     width: 100%;
     height: 100%;
-    padding: 24px;
-    padding-left: 18px;
-    padding-right: 8px;
-    padding-bottom: 100px;
+    padding: 0 8px 100px 18px;
     overflow-y: auto;
     position: relative;
   }
 
-  /* Sticky header (1st child) and main header (2nd child) have no top margin */
-  .home-view > :global(.sticky-header),
-  .home-view > :global(*:nth-child(2)) {
+  /* Sticky header gets no extra margin from section spacing */
+  .home-view > :global(.sticky-header) {
     margin-top: 0 !important;
   }
 
-  /* Add spacing between sections - skip sticky header and main header */
-  .home-view > :global(*:not(:nth-child(1)):not(:nth-child(2))) {
+  /* Add spacing between sections - using :global to affect child components */
+  .home-view > :global(*:not(:first-child):not(.sticky-header)) {
     margin-top: 60px !important;
   }
 
-  /* Third child (first section after headers) gets less spacing */
-  .home-view > :global(*:nth-child(3)) {
+  /* First section after header (home-header) gets less spacing */
+  .home-view > :global(.home-header + *) {
     margin-top: 30px !important;
+  }
+
+  /* Home header itself gets no extra top margin */
+  .home-view > :global(.home-header) {
+    margin-top: 0 !important;
   }
 
   /* Custom scrollbar */
@@ -2139,29 +2141,17 @@
   .sticky-header {
     position: sticky;
     top: 0;
-    z-index: 20;
+    z-index: 50;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 12px;
-    padding: 8px 0;
+    padding: 10px 24px;
     background: var(--bg-primary);
-    border-bottom: 1px solid transparent;
-    opacity: 0;
-    pointer-events: none;
-    transform: translateY(-8px);
-    transition: opacity 180ms ease, transform 180ms ease, border-color 180ms ease;
-    margin-left: -18px;
-    margin-right: -8px;
-    padding-left: 18px;
-    padding-right: 8px;
-  }
-
-  .sticky-header.visible {
-    opacity: 1;
-    pointer-events: auto;
-    transform: translateY(0);
-    border-bottom-color: var(--border-subtle);
+    border-bottom: 1px solid var(--alpha-6);
+    box-shadow: 0 4px 8px -4px rgba(0, 0, 0, 0.5);
+    margin: 0 -8px 0 -18px;
+    width: calc(100% + 26px);
   }
 
   .sticky-tabs {
@@ -2199,10 +2189,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    padding-top: 24px;
     margin-bottom: 24px;
     gap: 16px;
     position: relative;
-    transition: opacity 180ms ease;
   }
 
   .home-header.scrolled .greeting {
