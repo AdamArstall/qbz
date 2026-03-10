@@ -47,7 +47,7 @@
   const CARD_WIDTH = 160;
   const CARD_HEIGHT = 250;
   const GAP = 24;
-  const ROW_GAP = 22;
+  const ROW_GAP = 11;
   const HEADER_HEIGHT = 44;
   const BUFFER_ITEMS = 5;
 
