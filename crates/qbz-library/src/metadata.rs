@@ -176,6 +176,73 @@ impl MetadataExtractor {
         None
     }
 
+    /// Try to extract a track number from the filename.
+    /// Handles common patterns like:
+    /// - "01 - Title.flac"
+    /// - "01. Title.flac"
+    /// - "01_Title.flac"
+    /// - "Track 01.flac"
+    /// - "1-01 Title.flac" (disc-track)
+    pub fn infer_track_number_from_filename(file_path: &Path) -> Option<u32> {
+        let stem = file_path.file_stem()?.to_str()?;
+        let trimmed = stem.trim();
+
+        // Pattern: starts with digits
+        if let Some(cap) = trimmed.strip_prefix(|c: char| c.is_ascii_digit()) {
+            // Collect leading digits
+            let digit_end = 1 + cap.chars().take_while(|c| c.is_ascii_digit()).count();
+            let num_str = &trimmed[..digit_end];
+            let rest = &trimmed[digit_end..];
+
+            // Check for disc-track pattern FIRST: "D-TT" like "1-01 Title", "2-05 Song"
+            // Only when leading number is 1-2 digits (disc number) followed by dash+digits
+            if digit_end <= 2 && rest.starts_with('-') {
+                let after_dash = &rest[1..];
+                let track_digits: String = after_dash.chars().take_while(|c| c.is_ascii_digit()).collect();
+                if !track_digits.is_empty() {
+                    if let Ok(n) = track_digits.parse::<u32>() {
+                        if n > 0 && n < 10000 {
+                            return Some(n);
+                        }
+                    }
+                }
+            }
+
+            // Regular pattern: digits followed by separator
+            // "01 - Title", "01. Title", "01_Title", "01-Title"
+            let rest_trimmed = rest.trim_start();
+            let has_separator = rest_trimmed.starts_with('-')
+                || rest_trimmed.starts_with('.')
+                || rest_trimmed.starts_with('_')
+                || rest_trimmed.starts_with(' ')
+                || rest_trimmed.is_empty();
+
+            if has_separator {
+                if let Ok(n) = num_str.parse::<u32>() {
+                    if n > 0 && n < 10000 {
+                        return Some(n);
+                    }
+                }
+            }
+        }
+
+        // Pattern: "Track 01" or "Track01"
+        let lower = trimmed.to_lowercase();
+        if lower.starts_with("track") {
+            let after = trimmed[5..].trim_start();
+            let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if !digits.is_empty() {
+                if let Ok(n) = digits.parse::<u32>() {
+                    if n > 0 && n < 10000 {
+                        return Some(n);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
     pub fn infer_disc_number(file_path: &Path) -> Option<u32> {
         let parent_dir = file_path.parent()?;
         let parent_name = parent_dir.file_name()?.to_str()?;
@@ -351,7 +418,8 @@ impl MetadataExtractor {
                 album_artist: tag.get_string(&ItemKey::AlbumArtist).map(|s| s.to_string()),
                 album_group_key,
                 album_group_title,
-                track_number: tag.track().map(|t| t as u32),
+                track_number: tag.track().map(|t| t as u32)
+                    .or_else(|| Self::infer_track_number_from_filename(file_path)),
                 disc_number: tag
                     .disk()
                     .and_then(|d| if d > 0 { Some(d as u32) } else { None })
@@ -395,7 +463,7 @@ impl MetadataExtractor {
                 album_artist: None,
                 album_group_key,
                 album_group_title,
-                track_number: None,
+                track_number: Self::infer_track_number_from_filename(file_path),
                 disc_number: inferred_disc,
                 year: None,
                 genre: None,
@@ -718,5 +786,53 @@ mod tests {
         let path = Path::new("/music/EELS/Beautiful Freak/FLAC 24-bit - 96 kHz/Disc 1/01 - Novocaine.flac");
         let root = MetadataExtractor::album_root_dir(path).unwrap();
         assert_eq!(root, Path::new("/music/EELS/Beautiful Freak"));
+    }
+
+    #[test]
+    fn test_infer_track_number_from_filename() {
+        // Common patterns: "01 - Title"
+        assert_eq!(
+            MetadataExtractor::infer_track_number_from_filename(Path::new("/music/01 - Novocaine.flac")),
+            Some(1)
+        );
+        assert_eq!(
+            MetadataExtractor::infer_track_number_from_filename(Path::new("/music/12 - Beautiful Freak.flac")),
+            Some(12)
+        );
+        // "01. Title"
+        assert_eq!(
+            MetadataExtractor::infer_track_number_from_filename(Path::new("/music/03. Song Name.flac")),
+            Some(3)
+        );
+        // "01_Title"
+        assert_eq!(
+            MetadataExtractor::infer_track_number_from_filename(Path::new("/music/05_Track.flac")),
+            Some(5)
+        );
+        // Just number
+        assert_eq!(
+            MetadataExtractor::infer_track_number_from_filename(Path::new("/music/07.flac")),
+            Some(7)
+        );
+        // "Track 01"
+        assert_eq!(
+            MetadataExtractor::infer_track_number_from_filename(Path::new("/music/Track 09.flac")),
+            Some(9)
+        );
+        // "1-01 Title" (disc-track)
+        assert_eq!(
+            MetadataExtractor::infer_track_number_from_filename(Path::new("/music/2-05 Song.flac")),
+            Some(5)
+        );
+        // Not a track number (title starting with non-track digits)
+        assert_eq!(
+            MetadataExtractor::infer_track_number_from_filename(Path::new("/music/Novocaine.flac")),
+            None
+        );
+        // Zero is not a valid track number
+        assert_eq!(
+            MetadataExtractor::infer_track_number_from_filename(Path::new("/music/00 - Intro.flac")),
+            None
+        );
     }
 }

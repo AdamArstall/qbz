@@ -1047,7 +1047,7 @@ impl LibraryDatabase {
     pub fn get_track(&self, id: i64) -> Result<Option<LocalTrack>, LibraryError> {
         let mut stmt = self
             .conn
-            .prepare("SELECT * FROM local_tracks WHERE id = ?")
+            .prepare(&format!("SELECT {} FROM local_tracks WHERE id = ?", Self::TRACK_COLUMNS))
             .map_err(|e| LibraryError::Database(e.to_string()))?;
 
         stmt.query_row(params![id], |row| Self::row_to_track(row))
@@ -1059,7 +1059,7 @@ impl LibraryDatabase {
     pub fn get_track_by_path(&self, path: &str) -> Result<Option<LocalTrack>, LibraryError> {
         let mut stmt = self
             .conn
-            .prepare("SELECT * FROM local_tracks WHERE file_path = ? AND cue_file_path IS NULL")
+            .prepare(&format!("SELECT {} FROM local_tracks WHERE file_path = ? AND cue_file_path IS NULL", Self::TRACK_COLUMNS))
             .map_err(|e| LibraryError::Database(e.to_string()))?;
 
         stmt.query_row(params![path], |row| Self::row_to_track(row))
@@ -1318,15 +1318,15 @@ impl LibraryDatabase {
 
     /// Get tracks for an album group
     pub fn get_album_tracks(&self, group_key: &str) -> Result<Vec<LocalTrack>, LibraryError> {
+        let sql = format!(
+            "SELECT {} FROM local_tracks \
+             WHERE COALESCE(album_group_key, album || '|' || COALESCE(album_artist, artist)) = ? \
+             ORDER BY disc_number, track_number, title",
+            Self::TRACK_COLUMNS
+        );
         let mut stmt = self
             .conn
-            .prepare(
-                r#"
-            SELECT * FROM local_tracks
-            WHERE COALESCE(album_group_key, album || '|' || COALESCE(album_artist, artist)) = ?
-            ORDER BY disc_number, track_number, title
-        "#,
-            )
+            .prepare(&sql)
             .map_err(|e| LibraryError::Database(e.to_string()))?;
 
         let rows = stmt
@@ -1689,13 +1689,10 @@ impl LibraryDatabase {
         };
 
         let sql = format!(
-            r#"
-            SELECT * FROM local_tracks
-            WHERE (title LIKE ?1 OR artist LIKE ?1 OR album LIKE ?1)
-            {} {}
-            {}
-        "#,
-            source_filter, network_filter, limit_clause
+            "SELECT {} FROM local_tracks \
+             WHERE (title LIKE ?1 OR artist LIKE ?1 OR album LIKE ?1) \
+             {} {} {}",
+            Self::TRACK_COLUMNS, source_filter, network_filter, limit_clause
         );
 
         let mut stmt = self
@@ -1756,35 +1753,44 @@ impl LibraryDatabase {
     // === Helpers ===
 
     /// Convert a database row to LocalTrack
+    /// Column list for SELECT queries (avoids fragile SELECT * with positional indices)
+    const TRACK_COLUMNS: &'static str =
+        "id, file_path, title, artist, album, album_artist, \
+         track_number, disc_number, year, genre, duration_secs, format, \
+         bit_depth, sample_rate, channels, file_size_bytes, \
+         cue_file_path, cue_start_secs, cue_end_secs, artwork_path, \
+         last_modified, indexed_at, album_group_key, album_group_title, \
+         source, qobuz_track_id, catalog_number";
+
     fn row_to_track(row: &rusqlite::Row) -> rusqlite::Result<LocalTrack> {
         Ok(LocalTrack {
-            id: row.get(0)?,
-            file_path: row.get(1)?,
-            title: row.get(2)?,
-            artist: row.get(3)?,
-            album: row.get(4)?,
-            album_artist: row.get(5)?,
-            album_group_key: row.get::<_, Option<String>>(22)?.unwrap_or_default(),
-            album_group_title: row.get::<_, Option<String>>(23)?.unwrap_or_default(),
-            track_number: row.get(6)?,
-            disc_number: row.get(7)?,
-            year: row.get(8)?,
-            genre: row.get(9)?,
-            catalog_number: row.get(26).ok().flatten(),
-            duration_secs: row.get(10)?,
-            format: Self::parse_format(&row.get::<_, String>(11)?),
-            bit_depth: row.get(12)?,
-            sample_rate: row.get::<_, f64>(13)?,
-            channels: row.get(14)?,
-            file_size_bytes: row.get(15)?,
-            cue_file_path: row.get(16)?,
-            cue_start_secs: row.get(17)?,
-            cue_end_secs: row.get(18)?,
-            artwork_path: row.get(19)?,
-            last_modified: row.get(20)?,
-            indexed_at: row.get(21)?,
-            source: row.get(24).ok().flatten(),
-            qobuz_track_id: row.get(25).ok().flatten(),
+            id: row.get(0)?,                  // id
+            file_path: row.get(1)?,           // file_path
+            title: row.get(2)?,               // title
+            artist: row.get(3)?,              // artist
+            album: row.get(4)?,               // album
+            album_artist: row.get(5)?,        // album_artist
+            track_number: row.get(6)?,        // track_number
+            disc_number: row.get(7)?,         // disc_number
+            year: row.get(8)?,                // year
+            genre: row.get(9)?,               // genre
+            duration_secs: row.get(10)?,      // duration_secs
+            format: Self::parse_format(&row.get::<_, String>(11)?), // format
+            bit_depth: row.get(12)?,          // bit_depth
+            sample_rate: row.get::<_, f64>(13)?, // sample_rate
+            channels: row.get(14)?,           // channels
+            file_size_bytes: row.get(15)?,    // file_size_bytes
+            cue_file_path: row.get(16)?,      // cue_file_path
+            cue_start_secs: row.get(17)?,     // cue_start_secs
+            cue_end_secs: row.get(18)?,       // cue_end_secs
+            artwork_path: row.get(19)?,       // artwork_path
+            last_modified: row.get(20)?,      // last_modified
+            indexed_at: row.get(21)?,         // indexed_at
+            album_group_key: row.get::<_, Option<String>>(22)?.unwrap_or_default(), // album_group_key
+            album_group_title: row.get::<_, Option<String>>(23)?.unwrap_or_default(), // album_group_title
+            source: row.get(24).ok().flatten(),         // source
+            qobuz_track_id: row.get(25).ok().flatten(), // qobuz_track_id
+            catalog_number: row.get(26).ok().flatten(),  // catalog_number
         })
     }
 

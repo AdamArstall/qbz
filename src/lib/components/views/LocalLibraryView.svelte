@@ -2488,11 +2488,36 @@
     }
 
     const discs = [...groups.keys()].sort((a, b) => a - b);
-    return discs.map(disc => ({
-      disc,
-      label: `Disc ${disc}`,
-      tracks: groups.get(disc) ?? []
-    }));
+
+    // Detect "box set" pattern: many discs with only 1 track each
+    // (e.g., compilations tagged as disc 1 track 1, disc 2 track 1, etc.)
+    // In this case, flatten into a single section with index-based numbering
+    const singleTrackDiscs = discs.filter(disc => (groups.get(disc)?.length ?? 0) === 1).length;
+    const isFlattenableBoxSet = discs.length > 3 && singleTrackDiscs > discs.length * 0.8;
+
+    if (isFlattenableBoxSet) {
+      return [{
+        disc: 0,
+        label: '',
+        tracks: sorted,
+        useIndexNumbering: true
+      }];
+    }
+
+    const sections = discs.map(disc => {
+      const sectionTracks = groups.get(disc) ?? [];
+      // Detect degenerate track numbering: if >1 track and all share the same
+      // track_number (e.g., all "1"), the tags are unreliable for this section
+      const hasDegenerate = sectionTracks.length > 1 &&
+        sectionTracks.every(item => item.track_number === sectionTracks[0].track_number);
+      return {
+        disc,
+        label: `Disc ${disc}`,
+        tracks: sectionTracks,
+        useIndexNumbering: hasDegenerate
+      };
+    });
+    return sections;
   }
 
   // Memoization cache for artwork URLs to avoid repeated convertFileSrc calls
@@ -3250,7 +3275,7 @@
           {/if}
           {#each section.tracks as track, index (track.id)}
             <TrackRow
-              number={track.track_number || index + 1}
+              number={section.useIndexNumbering ? index + 1 : (track.track_number || index + 1)}
               title={track.title}
               artist={track.artist !== selectedAlbum?.artist ? track.artist : undefined}
               duration={formatDuration(track.duration_secs)}
