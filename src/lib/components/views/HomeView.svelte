@@ -911,7 +911,6 @@
       </button>
     </div>
     <div class="header-actions">
-      <GenreFilterButton onFilterChange={handleGenreFilterChange} />
       {#if activeTab === 'home'}
         <button class="settings-btn" onclick={() => isSettingsModalOpen = true} title={$t('home.customizeHome')}>
           <img
@@ -924,6 +923,7 @@
           />
         </button>
       {/if}
+      <GenreFilterButton onFilterChange={handleGenreFilterChange} />
     </div>
   </div>
 
