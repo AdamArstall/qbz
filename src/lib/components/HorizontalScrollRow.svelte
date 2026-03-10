@@ -117,6 +117,7 @@
 
   .content {
     display: flex;
+    align-items: flex-start;
     gap: 22px;
     width: max-content;
   }

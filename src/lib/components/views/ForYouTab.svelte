@@ -1321,8 +1321,8 @@
         {/if}
         <h3 class="spotlight-name">{spotlightData.artistName}</h3>
         <div class="spotlight-actions">
-          <button class="action-btn-circle primary" onclick={() => handleSpotlightRadio()} disabled={spotlightRadioLoading}>
-            {#if spotlightRadioLoading}
+          <button class="action-btn-circle primary" onclick={() => handleSpotlightTopTracks()} disabled={spotlightTopTracksLoading}>
+            {#if spotlightTopTracksLoading}
               <Loader2 size={20} class="spinner" />
             {:else}
               <Play size={20} fill="currentColor" color="currentColor" />
@@ -1337,6 +1337,7 @@
 
     <!-- Spotlight Content Row: Top Tracks card, Radio card, Playlists, Albums -->
     <HorizontalScrollRow>
+      {#snippet header()}<span></span>{/snippet}
       {#snippet children()}
         <!-- TOP TRACKS card -->
         {#if spotlightData!.topTracks.length > 0}
@@ -1348,6 +1349,15 @@
             disabled={spotlightTopTracksLoading}
           >
             <div class="radio-card-visual spotlight-top-tracks-visual">
+              {#if spotlightData!.artistImage}
+                <img
+                  use:cachedSrc={spotlightData!.artistImage}
+                  alt={spotlightData!.artistName}
+                  class="spotlight-top-tracks-art"
+                  loading="lazy"
+                  decoding="async"
+                />
+              {/if}
               <span class="spotlight-top-tracks-label">{$t('home.topTracksLabel')}</span>
               <div class="radio-card-hover-overlay" class:visible={isTopTracksLoading}>
                 {#if isTopTracksLoading}
@@ -1412,7 +1422,7 @@
             </div>
           </div>
           <div class="radio-card-meta-title">{spotlightData!.artistName}</div>
-          <div class="radio-card-artist">{$t('home.andMore')}</div>
+          <div class="radio-card-artist">&nbsp;</div>
         </button>
 
         <!-- Playlist cards (if artist has Qobuz playlists) -->
@@ -2149,6 +2159,7 @@
 
   .spotlight-actions {
     display: flex;
+    align-items: center;
     gap: 10px;
     margin-top: 4px;
   }
@@ -2163,8 +2174,21 @@
     justify-content: center;
   }
 
+  .spotlight-top-tracks-art {
+    position: relative;
+    z-index: 1;
+    width: 100px;
+    height: 100px;
+    object-fit: cover;
+    border-radius: 50%;
+  }
+
   .spotlight-top-tracks-label {
-    font-size: 22px;
+    position: absolute;
+    bottom: 10px;
+    left: 0;
+    right: 0;
+    font-size: 20px;
     font-weight: 700;
     letter-spacing: 0.12em;
     padding-left: 0.12em;
@@ -2183,7 +2207,7 @@
   .spotlight-playlist-img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     position: absolute;
     inset: 0;
   }
