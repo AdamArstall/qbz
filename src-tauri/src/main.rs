@@ -533,5 +533,47 @@ fn main() {
         qbz_nix_lib::logging::log_startup(&format!("[QBZ] GPU rendering: {}", gpu_status));
     }
 
-    qbz_nix_lib::run()
+    // Catch GTK initialization panics and show a recovery message
+    let result = std::panic::catch_unwind(|| {
+        qbz_nix_lib::run()
+    });
+
+    if let Err(panic_info) = result {
+        let msg = if let Some(s) = panic_info.downcast_ref::<String>() {
+            s.clone()
+        } else if let Some(s) = panic_info.downcast_ref::<&str>() {
+            s.to_string()
+        } else {
+            "Unknown panic".to_string()
+        };
+
+        let is_gtk_failure = msg.contains("Failed to initialize gtk")
+            || msg.contains("Failed to initialize GTK")
+            || msg.contains("GDK_BACKEND");
+
+        if is_gtk_failure {
+            eprintln!();
+            eprintln!("╔══════════════════════════════════════════════════════════════╗");
+            eprintln!("║  QBZ failed to start: GTK initialization error              ║");
+            eprintln!("╠══════════════════════════════════════════════════════════════╣");
+            eprintln!("║                                                              ║");
+            eprintln!("║  This is usually caused by incompatible graphics settings.   ║");
+            eprintln!("║  To fix it, run:                                             ║");
+            eprintln!("║                                                              ║");
+            eprintln!("║    qbz --reset-graphics                                      ║");
+            eprintln!("║                                                              ║");
+            eprintln!("║  Or for Flatpak:                                             ║");
+            eprintln!("║                                                              ║");
+            eprintln!("║    flatpak run com.blitzfc.qbz --reset-graphics              ║");
+            eprintln!("║                                                              ║");
+            eprintln!("╚══════════════════════════════════════════════════════════════╝");
+            eprintln!();
+            eprintln!("[QBZ] Error detail: {}", msg);
+        } else {
+            eprintln!("[QBZ] Fatal error: {}", msg);
+            eprintln!("[QBZ] If the app fails to start, try: qbz --reset-graphics");
+        }
+
+        std::process::exit(1);
+    }
 }
