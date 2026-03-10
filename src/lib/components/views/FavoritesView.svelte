@@ -201,6 +201,8 @@
   let editModalOpen = $state(false);
   let scrollContainer: HTMLDivElement | null = $state(null);
   let virtualizedTrackListRef: { scrollToGroup: (groupId: string) => void } | null = $state(null);
+  let virtualizedArtistGridRef: { scrollToGroup: (groupId: string) => void } | null = $state(null);
+  let virtualizedArtistListRef: { scrollToGroup: (groupId: string) => void } | null = $state(null);
   let favoritesPreferences = $state<FavoritesPreferences>({
     custom_icon_path: null,
     custom_icon_preset: 'heart',
@@ -1556,7 +1558,11 @@
         <button
           class="alpha-letter"
           class:disabled={!artistAlphaGroupsForIndex.has(letter)}
-          onclick={() => scrollToGroup('artist-alpha', letter, artistAlphaGroupsForIndex)}
+          onclick={() => {
+            if (!artistAlphaGroupsForIndex.has(letter)) return;
+            const id = groupIdForKey('artist-alpha', letter);
+            virtualizedArtistListRef?.scrollToGroup(id);
+          }}
         >
           {letter}
         </button>
@@ -1771,6 +1777,7 @@
           <!-- Left column: Artists list grouped A-Z (virtualized) -->
           <div class="artist-column">
             <VirtualizedFavoritesArtistList
+              bind:this={virtualizedArtistListRef}
               groups={groupedArtistsSidepanel}
               showGroupHeaders={true}
               selectedArtistId={selectedFavoriteArtist?.id ?? null}
@@ -1989,6 +1996,7 @@
         <div class="artist-sections">
           <div class="virtualized-artist-grid-container">
             <VirtualizedFavoritesArtistGrid
+              bind:this={virtualizedArtistGridRef}
               groups={artistGridGroups}
               showGroupHeaders={artistGroupingEnabled}
               onArtistClick={(id) => onArtistClick?.(id)}
@@ -2001,7 +2009,11 @@
                 <button
                   class="alpha-letter"
                   class:disabled={!artistAlphaGroups.has(letter)}
-                  onclick={() => scrollToGroup('artist-alpha', letter, artistAlphaGroups)}
+                  onclick={() => {
+                    if (!artistAlphaGroups.has(letter)) return;
+                    const id = groupIdForKey('artist-alpha', letter);
+                    virtualizedArtistGridRef?.scrollToGroup(id);
+                  }}
                 >
                   {letter}
                 </button>
