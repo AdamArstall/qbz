@@ -121,7 +121,7 @@ chmod +x QBZ.AppImage
 **APT Repository (recommended):**
 
 ```bash
-curl -fsSL https://vicrodh.github.io/qbz-apt/qbz-archive-keyring.gpg | sudo tee /usr/share/keyrings/qbz-archive-keyring.gpg > /dev/null
+curl -fsSL https://vicrodh.github.io/qbz-apt/qbz-archive-keyring.gpg | gpg --dearmor | sudo tee /usr/share/keyrings/qbz-archive-keyring.gpg > /dev/null
 echo "deb [signed-by=/usr/share/keyrings/qbz-archive-keyring.gpg arch=$(dpkg --print-architecture)] https://vicrodh.github.io/qbz-apt stable main" | sudo tee /etc/apt/sources.list.d/qbz.list
 sudo apt update && sudo apt install qbz
 ```
