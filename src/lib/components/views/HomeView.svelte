@@ -2039,12 +2039,12 @@
 
   /* Add spacing between sections - using :global to affect child components */
   .home-view > :global(*:not(:first-child):not(.sticky-header)) {
-    margin-top: 60px !important;
+    margin-top: 30px !important;
   }
 
   /* First section after header (home-header) gets less spacing */
   .home-view > :global(.home-header + *) {
-    margin-top: 30px !important;
+    margin-top: 16px !important;
   }
 
   /* Home header itself gets no extra top margin */
