@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Heart, HardDrive, ChevronDown, User, Disc, Music } from 'lucide-svelte';
+  import { Heart, HardDrive, ChevronDown, User, Disc, Music, ShoppingBag } from 'lucide-svelte';
   import { t } from '$lib/i18n';
 
   interface Props {
@@ -8,6 +8,10 @@
     onNavigate: (view: string, itemId?: string | number) => void;
     favoritesTabOrder?: string[];
     position?: 'left' | 'right';
+    showDiscover?: boolean;
+    showFavorites?: boolean;
+    showLibrary?: boolean;
+    showPurchases?: boolean;
   }
 
   let {
@@ -15,13 +19,19 @@
     activeItemId,
     onNavigate,
     favoritesTabOrder = ['tracks', 'albums', 'artists'],
-    position = 'left'
+    position = 'left',
+    showDiscover = false,
+    showFavorites = false,
+    showLibrary = false,
+    showPurchases = false
   }: Props = $props();
 
   let discoverOpen = $state(false);
   let favoritesOpen = $state(false);
+  let purchasesMenuOpen = $state(false);
   let discoverTimeout: ReturnType<typeof setTimeout> | null = null;
   let favoritesTimeout: ReturnType<typeof setTimeout> | null = null;
+  let purchasesTimeout: ReturnType<typeof setTimeout> | null = null;
 
   function isDiscoverActive(): boolean {
     return activeView === 'home';
@@ -35,6 +45,7 @@
     if (discoverTimeout) { clearTimeout(discoverTimeout); discoverTimeout = null; }
     discoverOpen = true;
     favoritesOpen = false;
+    purchasesMenuOpen = false;
   }
 
   function closeDiscoverDelayed() {
@@ -49,6 +60,7 @@
     if (favoritesTimeout) { clearTimeout(favoritesTimeout); favoritesTimeout = null; }
     favoritesOpen = true;
     discoverOpen = false;
+    purchasesMenuOpen = false;
   }
 
   function closeFavoritesDelayed() {
@@ -73,12 +85,33 @@
     onNavigate('library');
   }
 
+  function openPurchasesMenu() {
+    if (purchasesTimeout) { clearTimeout(purchasesTimeout); purchasesTimeout = null; }
+    purchasesMenuOpen = true;
+    discoverOpen = false;
+    favoritesOpen = false;
+  }
+
+  function closePurchasesDelayed() {
+    purchasesTimeout = setTimeout(() => { purchasesMenuOpen = false; }, 200);
+  }
+
+  function keepPurchasesMenu() {
+    if (purchasesTimeout) { clearTimeout(purchasesTimeout); purchasesTimeout = null; }
+  }
+
+  function handlePurchasesItem() {
+    onNavigate('purchases');
+    purchasesMenuOpen = false;
+  }
+
   // Close dropdowns on outside click
   function handleWindowClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
     if (!target.closest('.titlebar-nav')) {
       discoverOpen = false;
       favoritesOpen = false;
+      purchasesMenuOpen = false;
     }
   }
 </script>
@@ -87,6 +120,7 @@
 
 <div class="titlebar-nav" class:pos-left={position === 'left'} class:pos-right={position === 'right'} data-tauri-drag-region="false">
   <!-- Discover (with dropdown) -->
+  {#if showDiscover}
   <div
     class="nav-btn-wrapper"
     onmouseenter={openDiscover}
@@ -132,8 +166,10 @@
       </div>
     {/if}
   </div>
+  {/if}
 
   <!-- Favorites (with dropdown) -->
+  {#if showFavorites}
   <div
     class="nav-btn-wrapper"
     onmouseenter={openFavorites}
@@ -174,8 +210,10 @@
       </div>
     {/if}
   </div>
+  {/if}
 
   <!-- Local Library (no dropdown) -->
+  {#if showLibrary}
   <button
     class="nav-btn"
     class:active={activeView === 'library' || activeView === 'library-album'}
@@ -183,15 +221,58 @@
     data-tauri-drag-region="false"
   >
     <HardDrive size={12} />
-    <span class="nav-label">{$t('library.browse')}</span>
+    <span class="nav-label">{$t('library.title')}</span>
   </button>
+  {/if}
+
+  <!-- Purchases (with dropdown) -->
+  {#if showPurchases}
+  <div
+    class="nav-btn-wrapper"
+    onmouseenter={openPurchasesMenu}
+    onmouseleave={closePurchasesDelayed}
+  >
+    <button
+      class="nav-btn"
+      class:active={activeView === 'purchases' || activeView === 'purchase-album'}
+      onclick={() => onNavigate('purchases')}
+      data-tauri-drag-region="false"
+    >
+      <ShoppingBag size={12} />
+      <span class="nav-label">{$t('nav.purchases')}</span>
+      <ChevronDown size={10} />
+    </button>
+    {#if purchasesMenuOpen}
+      <div
+        class="dropdown"
+        onmouseenter={keepPurchasesMenu}
+        onmouseleave={closePurchasesDelayed}
+      >
+        <button
+          class="dropdown-item"
+          onclick={handlePurchasesItem}
+        >
+          <Disc size={12} />
+          <span>{$t('purchases.tabs.albums')}</span>
+        </button>
+        <button
+          class="dropdown-item"
+          onclick={handlePurchasesItem}
+        >
+          <Music size={12} />
+          <span>{$t('purchases.tabs.tracks')}</span>
+        </button>
+      </div>
+    {/if}
+  </div>
+  {/if}
 </div>
 
 <style>
   .titlebar-nav {
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: 6px;
     height: 100%;
     -webkit-app-region: no-drag;
     app-region: no-drag;
@@ -199,13 +280,13 @@
   }
 
   .titlebar-nav.pos-left {
-    padding-left: 8px;
+    padding-left: 12px;
     padding-right: 4px;
   }
 
   .titlebar-nav.pos-right {
     padding-left: 4px;
-    padding-right: 8px;
+    padding-right: 12px;
   }
 
   .nav-btn-wrapper {
@@ -218,15 +299,16 @@
   .nav-btn {
     display: flex;
     align-items: center;
-    gap: 4px;
-    height: 26px;
-    padding: 0 8px;
+    gap: 5px;
+    height: 28px;
+    padding: 0 10px;
     border: none;
     border-radius: 4px;
     background: transparent;
     color: var(--text-primary);
     font-size: 12px;
     font-weight: 500;
+    letter-spacing: 0.3px;
     cursor: pointer;
     transition: background-color 150ms ease, opacity 150ms ease;
     white-space: nowrap;

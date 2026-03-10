@@ -1969,7 +1969,8 @@
       "noAlbum": "No se puede descargar: la pista no tiene album asociado.",
       "noFormats": "No hay formatos de descarga disponibles para esta pista.",
       "downloadFailed": "Error al iniciar la descarga. Intenta de nuevo."
-    }
+    },
+    "loadFailed": "No hay compras disponibles."
   },
   "yourMixes": {
     "title": "DailyQ",

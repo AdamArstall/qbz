@@ -1969,7 +1969,8 @@
       "noAlbum": "Cannot download: track has no associated album.",
       "noFormats": "No download formats available for this track.",
       "downloadFailed": "Failed to start download. Please try again."
-    }
+    },
+    "loadFailed": "No purchases available."
   },
   "yourMixes": {
     "title": "DailyQ",

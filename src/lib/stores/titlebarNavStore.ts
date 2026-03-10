@@ -1,8 +1,8 @@
 /**
  * Titlebar Navigation Store
  *
- * Manages whether Discover, Favorites, and Local Library navigation
- * buttons appear in the custom title bar. Opt-in, off by default.
+ * Manages which navigation buttons appear in the custom title bar.
+ * Each item is individually toggleable, all off by default.
  * Auto-reverts when user switches to system title bar.
  *
  * Follows the same observable-store pattern as titleBarStore.
@@ -13,13 +13,19 @@ const STORAGE_KEY = 'qbz-titlebar-nav';
 export type TitlebarNavPosition = 'auto' | 'left' | 'right';
 
 export interface TitlebarNavConfig {
-  enabled: boolean;
+  discover: boolean;
+  favorites: boolean;
+  library: boolean;
+  purchases: boolean;
   position: TitlebarNavPosition;
 }
 
 // State
 let config: TitlebarNavConfig = {
-  enabled: false,
+  discover: false,
+  favorites: false,
+  library: false,
+  purchases: false,
   position: 'auto',
 };
 
@@ -48,7 +54,19 @@ export function initTitlebarNavStore(): void {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as Partial<TitlebarNavConfig>;
-      config = { ...config, ...parsed };
+      // Migrate from old single-toggle format
+      if ('enabled' in parsed && typeof (parsed as Record<string, unknown>).enabled === 'boolean') {
+        const wasEnabled = (parsed as Record<string, unknown>).enabled as boolean;
+        config = {
+          ...config,
+          discover: wasEnabled,
+          favorites: wasEnabled,
+          library: wasEnabled,
+          ...parsed,
+        };
+      } else {
+        config = { ...config, ...parsed };
+      }
     }
   } catch {
     // localStorage not available or invalid JSON
@@ -72,11 +90,19 @@ export function getTitlebarNavConfig(): TitlebarNavConfig {
 }
 
 /**
- * Check if nav should be shown in titlebar (enabled AND custom titlebar active)
+ * Check if ANY nav item is enabled for the titlebar
  */
 export function isTitlebarNavEnabled(): boolean {
-  return config.enabled;
+  return config.discover || config.favorites || config.library || config.purchases;
 }
+
+/**
+ * Check individual items
+ */
+export function isDiscoverInTitlebar(): boolean { return config.discover; }
+export function isFavoritesInTitlebar(): boolean { return config.favorites; }
+export function isLibraryInTitlebar(): boolean { return config.library; }
+export function isPurchasesInTitlebar(): boolean { return config.purchases; }
 
 /**
  * Get the resolved position based on window controls position.
@@ -90,10 +116,28 @@ export function getResolvedPosition(windowControlsPosition: 'left' | 'right'): '
 }
 
 /**
- * Enable/disable nav in titlebar
+ * Set individual item visibility
  */
-export function setTitlebarNavEnabled(enabled: boolean): void {
-  config = { ...config, enabled };
+export function setDiscoverInTitlebar(value: boolean): void {
+  config = { ...config, discover: value };
+  persist();
+  notifyListeners();
+}
+
+export function setFavoritesInTitlebar(value: boolean): void {
+  config = { ...config, favorites: value };
+  persist();
+  notifyListeners();
+}
+
+export function setLibraryInTitlebar(value: boolean): void {
+  config = { ...config, library: value };
+  persist();
+  notifyListeners();
+}
+
+export function setPurchasesInTitlebar(value: boolean): void {
+  config = { ...config, purchases: value };
   persist();
   notifyListeners();
 }

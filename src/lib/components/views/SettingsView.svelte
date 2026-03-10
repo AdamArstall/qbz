@@ -89,9 +89,12 @@
   import {
     subscribe as subscribeTitlebarNav,
     isTitlebarNavEnabled,
-    setTitlebarNavEnabled,
     getTitlebarNavConfig,
     setTitlebarNavPosition,
+    setDiscoverInTitlebar,
+    setFavoritesInTitlebar,
+    setLibraryInTitlebar,
+    setPurchasesInTitlebar,
     type TitlebarNavPosition
   } from '$lib/stores/titlebarNavStore';
   import {
@@ -924,8 +927,9 @@
   // Search bar location
   let searchInTitlebar = $state(getSearchBarLocation() === 'titlebar');
 
-  // Titlebar nav
-  let titlebarNavEnabled = $state(isTitlebarNavEnabled());
+  // Titlebar nav (per-item toggles)
+  let tbNavConfig = $state(getTitlebarNavConfig());
+  let titlebarNavAnyEnabled = $state(isTitlebarNavEnabled());
   let titlebarNavPos = $state<TitlebarNavPosition>(getTitlebarNavConfig().position);
 
   // Window controls customization
@@ -1463,8 +1467,9 @@
 
     // Subscribe to titlebar nav changes
     const unsubscribeTitlebarNavSub = subscribeTitlebarNav(() => {
-      titlebarNavEnabled = isTitlebarNavEnabled();
-      titlebarNavPos = getTitlebarNavConfig().position;
+      tbNavConfig = getTitlebarNavConfig();
+      titlebarNavAnyEnabled = isTitlebarNavEnabled();
+      titlebarNavPos = tbNavConfig.position;
     });
 
     // Subscribe to window controls customization changes
@@ -4222,13 +4227,40 @@
         <span class="setting-label">{$t('settings.appearance.navInTitleBar')}</span>
         <span class="setting-desc">{$t('settings.appearance.navInTitleBarDesc')}</span>
       </div>
+    </div>
+    <div class="setting-row indented-setting">
+      <span class="setting-label">{$t('nav.home')}</span>
       <Toggle
-        enabled={titlebarNavEnabled}
-        onchange={(v) => setTitlebarNavEnabled(v)}
+        enabled={tbNavConfig.discover}
+        onchange={(v) => setDiscoverInTitlebar(v)}
         disabled={hideTitleBar || useSystemTitleBar}
       />
     </div>
-    {#if titlebarNavEnabled && !hideTitleBar && !useSystemTitleBar}
+    <div class="setting-row indented-setting">
+      <span class="setting-label">{$t('nav.favorites')}</span>
+      <Toggle
+        enabled={tbNavConfig.favorites}
+        onchange={(v) => setFavoritesInTitlebar(v)}
+        disabled={hideTitleBar || useSystemTitleBar}
+      />
+    </div>
+    <div class="setting-row indented-setting">
+      <span class="setting-label">{$t('library.title')}</span>
+      <Toggle
+        enabled={tbNavConfig.library}
+        onchange={(v) => setLibraryInTitlebar(v)}
+        disabled={hideTitleBar || useSystemTitleBar}
+      />
+    </div>
+    <div class="setting-row indented-setting">
+      <span class="setting-label">{$t('nav.purchases')}</span>
+      <Toggle
+        enabled={tbNavConfig.purchases}
+        onchange={(v) => setPurchasesInTitlebar(v)}
+        disabled={hideTitleBar || useSystemTitleBar}
+      />
+    </div>
+    {#if titlebarNavAnyEnabled && !hideTitleBar && !useSystemTitleBar}
     <div class="setting-row">
       <div class="setting-info">
         <span class="setting-label">{$t('settings.appearance.navInTitleBarPosition')}</span>
@@ -6254,6 +6286,11 @@ flatpak override --user --filesystem=/home/USUARIO/Música com.blitzfc.qbz</pre>
 
   .setting-row.last {
     border-bottom: none;
+  }
+
+  .setting-row.indented-setting {
+    padding-left: 20px;
+    height: 40px;
   }
 
   .setting-label {

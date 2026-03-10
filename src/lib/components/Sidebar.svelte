@@ -93,7 +93,10 @@
     showTitleBar?: boolean;
     showPurchases?: boolean;
     searchInTitlebar?: boolean;
-    navInTitlebar?: boolean;
+    discoverInTitlebar?: boolean;
+    favoritesInTitlebar?: boolean;
+    libraryInTitlebar?: boolean;
+    purchasesInTitlebar?: boolean;
   }
 
   let {
@@ -116,7 +119,10 @@
     showTitleBar = true,
     showPurchases = false,
     searchInTitlebar = false,
-    navInTitlebar = false
+    discoverInTitlebar = false,
+    favoritesInTitlebar = false,
+    libraryInTitlebar = false,
+    purchasesInTitlebar = false
   }: Props = $props();
 
   let userPlaylists = $state<Playlist[]>([]);
@@ -1450,8 +1456,8 @@
       </div>
     {/if}
 
-    <!-- Navigation Section (hidden when nav is in titlebar) -->
-    {#if !navInTitlebar}
+    <!-- Navigation Section (hidden when Discover is in titlebar) -->
+    {#if !discoverInTitlebar}
     <nav class="nav-section">
       <NavigationItem
         label={$t('nav.home')}
@@ -1464,8 +1470,8 @@
     </nav>
     {/if}
 
-    <!-- Favorites Section (hidden when nav is in titlebar) -->
-    {#if !navInTitlebar}
+    <!-- Favorites Section (hidden when Favorites is in titlebar) -->
+    {#if !favoritesInTitlebar}
     <nav class="nav-section favorites-section">
       {#if isExpanded}
         <!-- Main Favorites item with chevron -->
@@ -1534,8 +1540,8 @@
     </nav>
     {/if}
 
-    <!-- Purchases Section (conditional on settings toggle) -->
-    {#if showPurchases}
+    <!-- Purchases Section (hidden when Purchases is in titlebar) -->
+    {#if showPurchases && !purchasesInTitlebar}
       <nav class="nav-section">
         <NavigationItem
           label={$t('nav.purchases')}
@@ -1808,8 +1814,8 @@
     </div>
     {/if}
 
-    <!-- Local Library Section (hidden when nav is in titlebar) -->
-    {#if !navInTitlebar}
+    <!-- Local Library Section (hidden when Library is in titlebar) -->
+    {#if !libraryInTitlebar}
     <div class="section local-library-section">
       {#if isExpanded}
         <button class="section-header-btn" onclick={() => { localLibraryCollapsed = !localLibraryCollapsed; saveSidebarCollapseState(); }}>
@@ -1862,7 +1868,7 @@
 </aside>
 
 <!-- Favorites menu popover (when sidebar collapsed) - outside sidebar to avoid overflow clipping -->
-{#if showFavoritesMenu && !isExpanded && !navInTitlebar}
+{#if showFavoritesMenu && !isExpanded && !favoritesInTitlebar}
   <div
     class="favorites-popover"
     style="left: {favoritesMenuPos.x}px; top: {favoritesMenuPos.y}px;"
@@ -2071,7 +2077,7 @@
     z-index: 2000;
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 144px); /* 104px NowPlayingBar + 40px TitleBar */
+    height: calc(100vh - 148px); /* 104px NowPlayingBar + 44px TitleBar */
     transition: width 200ms ease, min-width 200ms ease;
   }
 
@@ -2087,8 +2093,7 @@
   .content {
     flex: 1;
     overflow: hidden;
-    padding: 12px;
-    padding-bottom: 0;
+    padding: 6px 12px 0 12px;
     display: flex;
     flex-direction: column;
     gap: 16px;

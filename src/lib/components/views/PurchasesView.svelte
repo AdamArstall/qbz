@@ -338,7 +338,12 @@
         }
       }
     } catch (err) {
-      error = String(err);
+      const msg = String(err);
+      if (msg.includes('Load failed') || msg.includes('fetch') || msg.includes('NetworkError')) {
+        error = 'purchases.loadFailed';
+      } else {
+        error = msg;
+      }
     } finally {
       loading = false;
     }
@@ -361,7 +366,12 @@
         albumsLoaded = true;
         tracksLoaded = true;
       } catch (err) {
-        error = String(err);
+        const msg = String(err);
+        if (msg.includes('Load failed') || msg.includes('fetch') || msg.includes('NetworkError')) {
+          error = 'purchases.loadFailed';
+        } else {
+          error = msg;
+        }
       } finally {
         loading = false;
       }
@@ -822,7 +832,8 @@
       </div>
     {:else if error}
       <div class="empty">
-        <p>{error}</p>
+        <ShoppingBag size={48} />
+        <p>{error.startsWith('purchases.') ? $t(error) : error}</p>
       </div>
     {:else if activeTab === 'albums'}
       {#if filteredAlbums.length === 0}

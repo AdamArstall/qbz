@@ -122,7 +122,11 @@
     initTitlebarNavStore,
     isTitlebarNavEnabled,
     getResolvedPosition,
-    getTitlebarNavConfig
+    getTitlebarNavConfig,
+    isDiscoverInTitlebar,
+    isFavoritesInTitlebar,
+    isLibraryInTitlebar,
+    isPurchasesInTitlebar
   } from '$lib/stores/titlebarNavStore';
 
   // Keybindings system
@@ -447,6 +451,10 @@
   // Titlebar Nav State
   let titlebarNavEnabled = $state(isTitlebarNavEnabled());
   let titlebarNavPosition = $state<'left' | 'right'>('left');
+  let tbNavDiscover = $state(isDiscoverInTitlebar());
+  let tbNavFavorites = $state(isFavoritesInTitlebar());
+  let tbNavLibrary = $state(isLibraryInTitlebar());
+  let tbNavPurchases = $state(isPurchasesInTitlebar());
 
   // Window floating state (not maximized/tiled — for rounded corners + shadow)
   let isWindowFloating = $state(false);
@@ -3348,6 +3356,10 @@
     const unsubscribeTitlebarNav = subscribeTitlebarNav(() => {
       titlebarNavEnabled = isTitlebarNavEnabled();
       titlebarNavPosition = getResolvedPosition(windowControlsConfig.position);
+      tbNavDiscover = isDiscoverInTitlebar();
+      tbNavFavorites = isFavoritesInTitlebar();
+      tbNavLibrary = isLibraryInTitlebar();
+      tbNavPurchases = isPurchasesInTitlebar();
     });
 
     // Detect floating window state (not maximized) for rounded corners + shadow
@@ -3873,6 +3885,10 @@
     activeItemId={activeView === 'home' ? homeTab : undefined}
     onNavigate={navigateTo}
     position={titlebarNavPosition}
+    showDiscover={tbNavDiscover}
+    showFavorites={tbNavFavorites}
+    showLibrary={tbNavLibrary}
+    showPurchases={tbNavPurchases && showPurchases}
   />
 {/snippet}
 
@@ -3925,7 +3941,10 @@
       showTitleBar={showTitleBar}
       {showPurchases}
       searchInTitlebar={isSearchInTitlebar()}
-      navInTitlebar={titlebarNavEnabled && showTitleBar}
+      discoverInTitlebar={tbNavDiscover && showTitleBar}
+      favoritesInTitlebar={tbNavFavorites && showTitleBar}
+      libraryInTitlebar={tbNavLibrary && showTitleBar}
+      purchasesInTitlebar={tbNavPurchases && showTitleBar}
     />
 
     <!-- Content Area (main + lyrics sidebar) -->
@@ -4927,7 +4946,7 @@
     display: flex;
     flex: 1;
     min-width: 0;
-    height: calc(100vh - 144px); /* 104px NowPlayingBar + 40px TitleBar */
+    height: calc(100vh - 148px); /* 104px NowPlayingBar + 44px TitleBar */
     overflow: hidden;
     position: relative;
   }
@@ -4935,7 +4954,7 @@
   .main-content {
     flex: 1;
     min-width: 0;
-    height: calc(100vh - 144px); /* 104px NowPlayingBar + 40px TitleBar */
+    height: calc(100vh - 148px); /* 104px NowPlayingBar + 44px TitleBar */
     overflow: hidden; /* Views handle their own scrolling */
     padding-right: 8px; /* Gap between scrollbar and window edge */
     background-color: var(--bg-primary, #0f0f0f);

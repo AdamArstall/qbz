@@ -282,12 +282,12 @@
 
 <style>
   .titlebar {
-    height: 40px;
-    min-height: 40px;
+    height: 44px;
+    min-height: 44px;
     background-color: var(--bg-secondary);
     display: flex;
     align-items: center;
-    padding: 0;
+    padding: 2px 0 0 0;
     user-select: none;
     -webkit-user-select: none;
     -webkit-app-region: drag;
@@ -331,7 +331,7 @@
     gap: 6px;
     width: 100%;
     max-width: 360px;
-    height: 28px;
+    height: 30px;
     background-color: var(--bg-tertiary);
     border-radius: 6px;
     padding: 0 8px;

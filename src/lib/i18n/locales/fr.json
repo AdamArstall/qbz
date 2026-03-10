@@ -1788,7 +1788,8 @@
       "noAlbum": "Telechargement impossible : la piste n'a pas d'album associe.",
       "noFormats": "Aucun format de telechargement disponible pour cette piste.",
       "downloadFailed": "Impossible de demarrer le telechargement. Veuillez reessayer."
-    }
+    },
+    "loadFailed": "Aucun achat disponible."
   },
   "playlistManager": {
     "switchToFlat": "Vue plate",
