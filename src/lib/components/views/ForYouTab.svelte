@@ -1194,14 +1194,14 @@
         {/if}
         <h3 class="spotlight-name">{spotlightData.artistName}</h3>
         <div class="spotlight-actions">
-          <button class="spotlight-action-btn spotlight-play" onclick={() => handleSpotlightRadio()} disabled={spotlightRadioLoading}>
+          <button class="action-btn-circle primary" onclick={() => handleSpotlightRadio()} disabled={spotlightRadioLoading}>
             {#if spotlightRadioLoading}
-              <Loader2 size={18} class="spinner" />
+              <Loader2 size={20} class="spinner" />
             {:else}
-              <Play size={18} />
+              <Play size={20} fill="currentColor" color="currentColor" />
             {/if}
           </button>
-          <button class="spotlight-action-btn" onclick={() => onArtistClick?.(spotlightData!.artistId)}>
+          <button class="action-btn-circle" onclick={() => onArtistClick?.(spotlightData!.artistId)}>
             <User size={18} />
           </button>
         </div>
@@ -1954,33 +1954,7 @@
     margin-top: 4px;
   }
 
-  .spotlight-action-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    border: 1px solid var(--border-primary);
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 150ms ease;
-  }
-
-  .spotlight-action-btn:hover {
-    background: var(--bg-tertiary);
-  }
-
-  .spotlight-action-btn.spotlight-play {
-    background: var(--text-primary);
-    color: var(--bg-primary);
-    border-color: var(--text-primary);
-  }
-
-  .spotlight-action-btn.spotlight-play:hover {
-    opacity: 0.9;
-  }
+  /* Spotlight uses global .action-btn-circle and .action-btn-circle.primary */
 
   .spotlight-tracks {
     display: flex;
