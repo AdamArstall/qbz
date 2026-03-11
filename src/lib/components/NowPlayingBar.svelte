@@ -21,6 +21,7 @@
   import QualityBadge from './QualityBadge.svelte';
   import AudioOutputBadges from './AudioOutputBadges.svelte';
   import StackIcon from './StackIcon.svelte';
+  import { cachedSrc } from '$lib/actions/cachedImage';
   import { t as translateStore } from '$lib/i18n';
   import {
     subscribe as subscribeOffline,
@@ -340,7 +341,7 @@
             onmouseleave={() => showArtworkPreview = false}
           >
             {#if artwork}
-              <img src={artwork} alt={trackTitle} class="artwork" />
+              <img use:cachedSrc={artwork} alt={trackTitle} class="artwork" />
             {:else}
               <div class="artwork-placeholder"></div>
             {/if}
@@ -348,7 +349,7 @@
             <!-- Artwork Preview on Hover -->
             {#if showArtworkPreview && artwork}
               <div class="artwork-preview">
-                <img src={artwork} alt={trackTitle} />
+                <img use:cachedSrc={artwork} alt={trackTitle} />
               </div>
             {/if}
           </button>

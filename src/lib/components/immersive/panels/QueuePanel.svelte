@@ -1,6 +1,7 @@
 <script lang="ts">
   import { List, Play, History } from 'lucide-svelte';
   import { t } from '$lib/i18n';
+  import { cachedSrc } from '$lib/actions/cachedImage';
 
   interface QueueTrack {
     id: string | number;
@@ -89,7 +90,7 @@
       <div class="section">
         <div class="section-label">{$t('player.nowPlaying') || 'Now Playing'}</div>
         <div class="track-item current">
-          <img src={currentTrack.artwork} alt="" class="track-artwork" />
+          <img use:cachedSrc={currentTrack.artwork} alt="" class="track-artwork" />
           <div class="track-info">
             <div class="track-title">{currentTrack.title}</div>
             <div class="track-artist">{currentTrack.artist}</div>
@@ -115,7 +116,7 @@
               >
                 <Play size={14} />
               </button>
-              <img src={track.artwork} alt="" class="track-artwork" />
+              <img use:cachedSrc={track.artwork} alt="" class="track-artwork" />
               <div class="track-info">
                 <div class="track-title">{track.title}</div>
                 <div class="track-artist">{track.artist}</div>
@@ -144,7 +145,7 @@
               >
                 <Play size={14} />
               </button>
-              <img src={track.artwork} alt="" class="track-artwork" />
+              <img use:cachedSrc={track.artwork} alt="" class="track-artwork" />
               <div class="track-info">
                 <div class="track-title">{track.title}</div>
                 <div class="track-artist">{track.artist}</div>

@@ -2,6 +2,7 @@
   import { onDestroy } from 'svelte';
   import { X, Search, Heart, MoreVertical, Trash2, ListPlus, Info } from 'lucide-svelte';
   import { t } from '$lib/i18n';
+  import { cachedSrc } from '$lib/actions/cachedImage';
   import {
     isTrackFavorite,
     toggleTrackFavorite as storeToggleTrackFavorite,
@@ -430,7 +431,7 @@
                   tabindex="0"
                   onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleHistoryTrackClick(track); } }}
                 >
-                  <img src={track.artwork} alt={track.title} class="history-artwork" />
+                  <img use:cachedSrc={track.artwork} alt={track.title} class="history-artwork" />
                   <div class="track-info">
                     <div class="track-title">{track.title}</div>
                     <div class="track-artist">{track.artist}</div>

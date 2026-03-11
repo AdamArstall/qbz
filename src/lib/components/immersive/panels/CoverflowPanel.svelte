@@ -1,5 +1,6 @@
 <script lang="ts">
   import QualityBadge from '$lib/components/QualityBadge.svelte';
+  import { cachedSrc } from '$lib/actions/cachedImage';
 
   interface QueueTrack {
     id: string | number;
@@ -126,7 +127,7 @@
         title={item.position === 0 ? undefined : `${item.title} - ${item.artist}`}
       >
         <div class="cover-wrapper">
-          <img src={item.artwork} alt={item.title} class="cover-image" />
+          <img use:cachedSrc={item.artwork} alt={item.title} class="cover-image" />
           <div class="cover-reflection"></div>
         </div>
       </button>

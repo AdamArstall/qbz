@@ -60,6 +60,7 @@
   import { initBlacklistStore, isBlacklisted as isArtistBlacklisted } from '$lib/stores/artistBlacklistStore';
   import { initCustomArtistImageStore, clearCustomArtistImages } from '$lib/stores/customArtistImageStore';
   import { initCustomAlbumCoverStore, clearCustomAlbumCovers, resolveAlbumCover } from '$lib/stores/customAlbumCoverStore';
+  import { getCachedImageUrl } from '$lib/services/imageCacheService';
 
   // UI state management
   import {
@@ -3868,6 +3869,27 @@
     };
   });
 
+  // Resolved artwork URL — proxied through backend cache so it works even when
+  // WebKitGTK TLS is broken (AppImage on some distros). See GitHub #163.
+  let resolvedArtwork = $state<string>('');
+  $effect(() => {
+    const raw = currentTrack
+      ? (currentTrack.albumId ? resolveAlbumCover(currentTrack.albumId, currentTrack.artwork) : currentTrack.artwork)
+      : '';
+    if (!raw) { resolvedArtwork = ''; return; }
+    // If already a local/asset URL, use directly
+    if (raw.startsWith('asset://') || raw.startsWith('file://') || raw.startsWith('/')) {
+      resolvedArtwork = raw;
+      return;
+    }
+    // Proxy HTTPS URLs through backend cache
+    getCachedImageUrl(raw).then(resolved => {
+      resolvedArtwork = resolved;
+    }).catch(() => {
+      resolvedArtwork = raw;
+    });
+  });
+
   // Derived values for NowPlayingBar
   const currentQueueTrack = $derived<QueueTrack | null>(currentTrack ? {
     id: String(currentTrack.id),
@@ -4620,7 +4642,7 @@
     <!-- Now Playing Bar -->
     {#if currentTrack}
       <NowPlayingBar
-        artwork={currentTrack.albumId ? resolveAlbumCover(currentTrack.albumId, currentTrack.artwork) : currentTrack.artwork}
+        artwork={resolvedArtwork}
         trackTitle={currentTrack.title}
         artist={currentTrack.artist}
         album={currentTrack.album}
@@ -4707,7 +4729,7 @@
           if (isFullScreenOpen) closeFullScreen();
           if (isFocusModeOpen) closeFocusMode();
         }}
-        artwork={currentTrack.albumId ? resolveAlbumCover(currentTrack.albumId, currentTrack.artwork) : currentTrack.artwork}
+        artwork={resolvedArtwork}
         trackTitle={currentTrack.title}
         artist={currentTrack.artist}
         album={currentTrack.album}

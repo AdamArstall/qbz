@@ -1,5 +1,6 @@
 <script lang="ts">
   import { SkipBack, Play, Pause, SkipForward, ChevronDown } from 'lucide-svelte';
+  import { cachedSrc } from '$lib/actions/cachedImage';
   import StackIcon from './StackIcon.svelte';
   import LyricsLines from './lyrics/LyricsLines.svelte';
   import { startActiveLineUpdates, stopActiveLineUpdates } from '$lib/stores/lyricsStore';
@@ -197,7 +198,7 @@
       <!-- Left: Large Artwork -->
       <div class="artwork-section">
         <div class="artwork-wrapper">
-          <img src={artwork} alt={trackTitle} class="artwork-image" />
+          <img use:cachedSrc={artwork} alt={trackTitle} class="artwork-image" />
         </div>
       </div>
 
