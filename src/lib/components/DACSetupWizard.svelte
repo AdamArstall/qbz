@@ -76,7 +76,7 @@
   let currentStep = $state<WizardStep>('welcome');
   let completedSteps = $state(new Set<WizardStep>());
   let dacNodeName = $state('');
-  let selectedApps = $state(['QBZ']);
+  let selectedApps = $state(['qbz']);
   let welcomeConfirmed = $state(false);
   let precheckDone = $state(false);
   let backupConfirmed = $state(false);
@@ -172,7 +172,7 @@
       currentStep = 'welcome';
       completedSteps = new Set();
       dacNodeName = '';
-      selectedApps = ['QBZ'];
+      selectedApps = ['qbz'];
       welcomeConfirmed = false;
       precheckDone = false;
       backupConfirmed = false;
@@ -248,10 +248,8 @@
   function generatePulseConfig(): string[] {
     const fileName = dacNodeName ? `99-qbz-bitperfect-${dacShortName()}.conf` : '99-qbz-bitperfect.conf';
     const rules = selectedApps.map(app => {
-      const matchKey = app === 'QBZ' ? 'application.name' : 'application.process.binary';
-      const matchValue = app === 'QBZ' ? 'QBZ' : app.toLowerCase();
       return `  {
-    matches = [ { ${matchKey} = "${matchValue}" } ]
+    matches = [ { application.process.binary = "${app}" } ]
     actions = { update-props = { resample.disable = true, channelmix.disable = true } }
   }`;
     }).join('\n');

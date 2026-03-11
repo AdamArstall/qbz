@@ -10,7 +10,7 @@
 
   // App definitions with binary names for config
   const predefinedApps = [
-    { id: 'qbz', labelKey: 'dacWizard.pulseConfig.apps.qbz', binary: 'QBZ', disabled: true },
+    { id: 'qbz', labelKey: 'dacWizard.pulseConfig.apps.qbz', binary: 'qbz', disabled: true },
     { id: 'vlc', labelKey: 'dacWizard.pulseConfig.apps.vlc', binary: 'vlc' },
     { id: 'deadbeef', labelKey: 'dacWizard.pulseConfig.apps.deadbeef', binary: 'deadbeef' },
     { id: 'strawberry', labelKey: 'dacWizard.pulseConfig.apps.strawberry', binary: 'strawberry' },
@@ -26,7 +26,7 @@
   }
 
   function toggleApp(binary: string) {
-    if (binary === 'QBZ') return; // QBZ is always selected
+    if (binary === 'qbz') return; // QBZ is always selected
 
     if (isSelected(binary)) {
       selectedApps = selectedApps.filter(a => a !== binary);
