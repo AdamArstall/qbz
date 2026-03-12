@@ -6,18 +6,16 @@
   import { t } from '$lib/i18n';
   import { showToast } from '$lib/stores/toastStore';
   import type {
+    QconnectConnectionStatus,
+    QconnectDiagnosticsEntry,
+    QconnectSessionSnapshot
+  } from '$lib/services/qconnectRuntime';
+  import type {
     QconnectQueueItemSnapshot,
     QconnectQueueSnapshot,
     QconnectRendererTrackSnapshot,
     QconnectRendererSnapshot
   } from '$lib/services/qconnectRemoteQueue';
-
-  interface QconnectConnectionStatus {
-    running: boolean;
-    transport_connected: boolean;
-    endpoint_url?: string | null;
-    last_error?: string | null;
-  }
 
   interface QconnectRendererInfo {
     renderer_id: number;
@@ -25,19 +23,6 @@
     brand?: string | null;
     model?: string | null;
     device_type?: number | null;
-  }
-
-  interface QconnectSessionSnapshot {
-    session_uuid?: string | null;
-    active_renderer_id?: number | null;
-    renderers: QconnectRendererInfo[];
-  }
-
-  interface QconnectDiagnosticsEntry {
-    ts: number;
-    level: 'info' | 'warn' | 'error';
-    channel: string;
-    message: string;
   }
 
   interface Props {

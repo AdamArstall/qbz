@@ -241,39 +241,6 @@
     volume?: number;
   };
 
-  type QconnectConnectionStatus = {
-    running: boolean;
-    transport_connected: boolean;
-    endpoint_url?: string | null;
-    last_error?: string | null;
-  };
-
-  type QconnectSessionSnapshot = {
-    session_uuid?: string | null;
-    active_renderer_id?: number | null;
-    renderers: Array<{
-      renderer_id: number;
-      friendly_name?: string | null;
-      brand?: string | null;
-      model?: string | null;
-      device_type?: number | null;
-    }>;
-  };
-
-  type QconnectAdmissionBlockedEvent = {
-    command_type: string;
-    origin: string;
-    reason: string;
-    handoff_intent: 'continue_locally' | 'send_to_connect';
-  };
-
-  type QconnectDiagnosticsEntry = {
-    ts: number;
-    level: 'info' | 'warn' | 'error';
-    channel: string;
-    message: string;
-  };
-
   const MEDIA_SEEK_FALLBACK_SECS = 10;
 
   // Types
@@ -340,6 +307,25 @@
     QconnectRendererReportDebugPayload,
     QconnectRendererSnapshot
   } from '$lib/services/qconnectRemoteQueue';
+  import {
+    DEFAULT_QCONNECT_CONNECTION_STATUS,
+    QCONNECT_DIAGNOSTIC_LOG_LIMIT,
+    SHOW_QCONNECT_DEV_DIAGNOSTICS,
+    appendQconnectDiagnosticEntry,
+    evaluateQconnectPlaybackReportSkip,
+    evaluateQconnectSessionPersistence,
+    fetchQconnectRuntimeState,
+    isQconnectRemoteModeActive as computeQconnectRemoteModeActive,
+    logQconnectPlaybackReport as appendQconnectPlaybackReport,
+    qconnectAdmissionReasonKey,
+    toggleQconnectConnection
+  } from '$lib/services/qconnectRuntime';
+  import type {
+    QconnectAdmissionBlockedEvent,
+    QconnectConnectionStatus,
+    QconnectDiagnosticsEntry,
+    QconnectSessionSnapshot
+  } from '$lib/services/qconnectRuntime';
 
   // Internationalization
   import { t } from '$lib/i18n';
@@ -851,18 +837,12 @@
   let isQobuzConnectConnected = $state(false);
   let qobuzConnectBusy = $state(false);
   let qobuzConnectRefreshBusy = $state(false);
-  let qobuzConnectStatus = $state<QconnectConnectionStatus>({
-    running: false,
-    transport_connected: false,
-    endpoint_url: null,
-    last_error: null
-  });
+  let qobuzConnectStatus = $state<QconnectConnectionStatus>(DEFAULT_QCONNECT_CONNECTION_STATUS);
   let qobuzConnectQueueSnapshot = $state<QconnectQueueSnapshot | null>(null);
   let qobuzConnectRendererSnapshot = $state<QconnectRendererSnapshot | null>(null);
   let qobuzConnectSessionSnapshot = $state<QconnectSessionSnapshot | null>(null);
   let qobuzConnectDiagnosticsLogs = $state<QconnectDiagnosticsEntry[]>([]);
-  const showQconnectDevDiagnostics = import.meta.env.DEV;
-  const QCONNECT_DIAGNOSTIC_LOG_LIMIT = 200;
+  const showQconnectDevDiagnostics = SHOW_QCONNECT_DEV_DIAGNOSTICS;
   let qconnectSessionPersistenceSkipLogged = false;
   let lastQconnectReportSkipSignature = '';
 
@@ -951,25 +931,13 @@
     level: 'info' | 'warn' | 'error',
     payload: unknown
   ): void {
-    const normalized = typeof payload === 'string'
-      ? payload
-      : (() => {
-          try {
-            return JSON.stringify(payload);
-          } catch {
-            return String(payload);
-          }
-        })();
-
-    qobuzConnectDiagnosticsLogs = [
-      {
-        ts: Date.now(),
-        level,
-        channel,
-        message: normalized
-      },
-      ...qobuzConnectDiagnosticsLogs
-    ].slice(0, QCONNECT_DIAGNOSTIC_LOG_LIMIT);
+    qobuzConnectDiagnosticsLogs = appendQconnectDiagnosticEntry(
+      qobuzConnectDiagnosticsLogs,
+      channel,
+      level,
+      payload,
+      QCONNECT_DIAGNOSTIC_LOG_LIMIT
+    );
   }
 
   function clearQobuzConnectDiagnostics(): void {
@@ -980,86 +948,62 @@
     source: 'interval' | 'player_transition',
     payload: Record<string, unknown>
   ): void {
-    pushQobuzConnectDiagnostic(`qconnect:report_playback_state:${source}`, 'info', payload);
+    qobuzConnectDiagnosticsLogs = appendQconnectPlaybackReport(
+      qobuzConnectDiagnosticsLogs,
+      source,
+      payload
+    );
   }
 
   function shouldSkipQconnectPlaybackReport(currentTrackId: number | null | undefined): boolean {
-    if (currentTrackId == null || !qobuzConnectQueueSnapshot) {
-      lastQconnectReportSkipSignature = '';
-      return false;
+    const decision = evaluateQconnectPlaybackReportSkip({
+      currentTrackId,
+      queueSnapshot: qobuzConnectQueueSnapshot,
+      rendererSnapshot: qobuzConnectRendererSnapshot,
+      lastSkipSignature: lastQconnectReportSkipSignature
+    });
+
+    lastQconnectReportSkipSignature = decision.nextSkipSignature;
+    if (decision.diagnosticPayload) {
+      pushQobuzConnectDiagnostic('qconnect:report_playback_state:skip', 'warn', decision.diagnosticPayload);
     }
 
-    const remoteQueueContainsTrack =
-      qobuzConnectQueueSnapshot.queue_items.some((item) => item.track_id === currentTrackId) ||
-      qobuzConnectQueueSnapshot.autoplay_items.some((item) => item.track_id === currentTrackId);
-
-    if (remoteQueueContainsTrack || qobuzConnectRendererSnapshot?.current_track?.track_id != null) {
-      lastQconnectReportSkipSignature = '';
-      return false;
-    }
-
-    const skipSignature = `${currentTrackId}:${qobuzConnectQueueSnapshot.version?.major ?? 0}.${qobuzConnectQueueSnapshot.version?.minor ?? 0}`;
-    if (lastQconnectReportSkipSignature !== skipSignature) {
-      lastQconnectReportSkipSignature = skipSignature;
-      pushQobuzConnectDiagnostic('qconnect:report_playback_state:skip', 'warn', {
-        reason: 'local_track_not_in_remote_queue',
-        current_track_id: currentTrackId,
-        remote_queue_preview: qobuzConnectQueueSnapshot.queue_items.slice(0, 6),
-        renderer_current: qobuzConnectRendererSnapshot?.current_track ?? null,
-        renderer_next: qobuzConnectRendererSnapshot?.next_track ?? null
-      });
-    }
-
-    return true;
-  }
-
-  function qobuzConnectAdmissionReasonKey(reason: string): string {
-    if (reason === 'local_library_tracks_never_enter_remote_qconnect_queue') {
-      return 'qconnect.admissionBlockedLocalLibrary';
-    }
-    if (reason === 'plex_tracks_never_enter_remote_qconnect_queue') {
-      return 'qconnect.admissionBlockedPlex';
-    }
-    return 'qconnect.admissionBlockedUnknown';
+    return decision.shouldSkip;
   }
 
   function isQconnectRemoteModeActive(): boolean {
-    return Boolean(isQobuzConnectConnected || qobuzConnectStatus.transport_connected);
+    return computeQconnectRemoteModeActive(isQobuzConnectConnected, qobuzConnectStatus);
   }
 
   function shouldPersistLocalSession(): boolean {
-    if (!isQconnectRemoteModeActive()) {
-      qconnectSessionPersistenceSkipLogged = false;
-      return true;
-    }
-
-    if (!qconnectSessionPersistenceSkipLogged) {
+    const decision = evaluateQconnectSessionPersistence(
+      isQconnectRemoteModeActive(),
+      qconnectSessionPersistenceSkipLogged
+    );
+    qconnectSessionPersistenceSkipLogged = decision.nextSkipLogged;
+    if (decision.shouldLogSkip) {
       console.log('[Session] Skipping local session persistence while Qobuz Connect remote mode is active');
-      qconnectSessionPersistenceSkipLogged = true;
     }
-    return false;
+    return decision.shouldPersist;
+  }
+
+  function applyQobuzConnectStatus(status: QconnectConnectionStatus): void {
+    qobuzConnectStatus = status;
+    const nextConnected = Boolean(status.transport_connected);
+    if (nextConnected !== isQobuzConnectConnected) {
+      isQobuzConnectConnected = nextConnected;
+      setRemoteControlMode(nextConnected);
+      return;
+    }
+    isQobuzConnectConnected = nextConnected;
   }
 
   async function refreshQobuzConnectStatus(): Promise<void> {
     try {
-      const status = await invoke<QconnectConnectionStatus>('v2_qconnect_status');
-      qobuzConnectStatus = status;
-      const wasConnected = isQobuzConnectConnected;
-      isQobuzConnectConnected = Boolean(status.transport_connected);
-      if (isQobuzConnectConnected !== wasConnected) {
-        setRemoteControlMode(isQobuzConnectConnected);
-      }
+      const runtimeState = await fetchQconnectRuntimeState();
+      applyQobuzConnectStatus(runtimeState.status);
     } catch {
-      qobuzConnectStatus = {
-        running: false,
-        transport_connected: false,
-        endpoint_url: null,
-        last_error: null
-      };
-      if (isQobuzConnectConnected) {
-        isQobuzConnectConnected = false;
-        setRemoteControlMode(false);
-      }
+      applyQobuzConnectStatus(DEFAULT_QCONNECT_CONNECTION_STATUS);
     }
   }
 
@@ -1071,17 +1015,14 @@
       return;
     }
 
-    try {
-      const [queueSnapshot, rendererSnapshot, sessionSnapshot] = await Promise.all([
-        invoke<QconnectQueueSnapshot>('v2_qconnect_queue_snapshot'),
-        invoke<QconnectRendererSnapshot>('v2_qconnect_renderer_snapshot'),
-        invoke<QconnectSessionSnapshot>('v2_qconnect_session_snapshot'),
-      ]);
-      qobuzConnectQueueSnapshot = queueSnapshot;
-      qobuzConnectRendererSnapshot = rendererSnapshot;
-      qobuzConnectSessionSnapshot = sessionSnapshot;
-    } catch (err) {
-      pushQobuzConnectDiagnostic('snapshot', 'warn', err);
+    const runtimeState = await fetchQconnectRuntimeState();
+    applyQobuzConnectStatus(runtimeState.status);
+    qobuzConnectQueueSnapshot = runtimeState.queueSnapshot;
+    qobuzConnectRendererSnapshot = runtimeState.rendererSnapshot;
+    qobuzConnectSessionSnapshot = runtimeState.sessionSnapshot;
+
+    if (runtimeState.snapshotError) {
+      pushQobuzConnectDiagnostic('snapshot', 'warn', runtimeState.snapshotError);
     }
   }
 
@@ -1089,8 +1030,14 @@
     if (qobuzConnectRefreshBusy) return;
     qobuzConnectRefreshBusy = true;
     try {
-      await refreshQobuzConnectStatus();
-      await refreshQobuzConnectSnapshots();
+      const runtimeState = await fetchQconnectRuntimeState();
+      applyQobuzConnectStatus(runtimeState.status);
+      qobuzConnectQueueSnapshot = runtimeState.queueSnapshot;
+      qobuzConnectRendererSnapshot = runtimeState.rendererSnapshot;
+      qobuzConnectSessionSnapshot = runtimeState.sessionSnapshot;
+      if (runtimeState.snapshotError) {
+        pushQobuzConnectDiagnostic('snapshot', 'warn', runtimeState.snapshotError);
+      }
     } finally {
       qobuzConnectRefreshBusy = false;
     }
@@ -1100,11 +1047,7 @@
     if (qobuzConnectBusy) return;
     qobuzConnectBusy = true;
     try {
-      if (isQobuzConnectConnected) {
-        await invoke('v2_qconnect_disconnect');
-      } else {
-        await invoke('v2_qconnect_connect', { options: null });
-      }
+      await toggleQconnectConnection(isQobuzConnectConnected);
     } catch (err) {
       console.error('Qobuz Connect toggle failed:', err);
       pushQobuzConnectDiagnostic('toggle', 'error', err);
@@ -4330,7 +4273,7 @@
 
       const unlisten8 = await listen<QconnectAdmissionBlockedEvent>('qconnect:admission_blocked', (event) => {
         pushQobuzConnectDiagnostic('qconnect:admission_blocked', 'warn', event.payload);
-        showToast($t(qobuzConnectAdmissionReasonKey(event.payload.reason)), 'warning');
+        showToast($t(qconnectAdmissionReasonKey(event.payload.reason)), 'warning');
       });
       if (disposed) { unlisten8(); return; }
       unlistenQconnectAdmissionBlocked = unlisten8;

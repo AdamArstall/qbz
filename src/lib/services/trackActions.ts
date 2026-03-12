@@ -20,6 +20,10 @@ import { showToast as storeShowToast, type ToastType } from '$lib/stores/toastSt
 import { t } from '$lib/i18n';
 import type { QobuzTrack, Track, PlaylistTrack, LocalLibraryTrack, DisplayTrack } from '$lib/types';
 import {
+  qconnectAdmissionReasonKey
+} from '$lib/services/qconnectRuntime';
+import type { QconnectConnectionStatus } from '$lib/services/qconnectRuntime';
+import {
   resolveQconnectPlayNextInsertAfter,
   type QconnectDiagnosticsPayload,
   type QconnectQueueSnapshot,
@@ -35,10 +39,6 @@ function showToast(message: string, type: ToastType): void {
 function translate(key: string): string {
   return get(t)(key);
 }
-
-type QconnectStatus = {
-  transport_connected: boolean;
-};
 
 type QconnectTrackOrigin =
   | 'qobuz_online'
@@ -60,16 +60,6 @@ type QueueTrackActionOptions = {
 
 const QCONNECT_DIAGNOSTIC_EVENT = 'qconnect:diagnostic';
 
-function qconnectAdmissionReasonKey(reason: string): string {
-  if (reason === 'local_library_tracks_never_enter_remote_qconnect_queue') {
-    return 'qconnect.admissionBlockedLocalLibrary';
-  }
-  if (reason === 'plex_tracks_never_enter_remote_qconnect_queue') {
-    return 'qconnect.admissionBlockedPlex';
-  }
-  return 'qconnect.admissionBlockedUnknown';
-}
-
 function resolveQconnectTrackOrigin(queueTrack: BackendQueueTrack, isLocal: boolean): QconnectTrackOrigin {
   const source = (queueTrack.source ?? '').toLowerCase();
   if (source === 'plex') return 'plex';
@@ -81,7 +71,7 @@ function resolveQconnectTrackOrigin(queueTrack: BackendQueueTrack, isLocal: bool
 
 async function isQconnectConnected(): Promise<boolean> {
   try {
-    const status = await invoke<QconnectStatus>('v2_qconnect_status');
+    const status = await invoke<QconnectConnectionStatus>('v2_qconnect_status');
     return Boolean(status.transport_connected);
   } catch (err) {
     console.warn('[QConnect] isQconnectConnected failed:', err);
