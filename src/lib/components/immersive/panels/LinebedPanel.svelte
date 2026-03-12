@@ -43,8 +43,13 @@
 
   // Linebed parameters
   const NUM_BANDS = 190; // viz:spectral sends 190 bands
-  const NUM_LINES = 35;  // Number of stacked history lines
-  const SMOOTHING = 0.5;
+  const NUM_LINES = 80;  // Dense terrain lines (musicvid.org uses 200 with WebGL)
+  const SMOOTHING = 0.35; // Temporal smoothing between frames
+
+  // Spectrum processing params (from musicvid.org SpectrumAnalyser)
+  const SMOOTHING_PASSES = 3;
+  const SMOOTHING_POINTS = 9;
+  const SPECTRUM_EXPONENT = 0.8; // Exponential transform for peak emphasis
 
   // Ring buffer of spectrum snapshots
   const history: Float32Array[] = [];
@@ -59,6 +64,30 @@
 
   let lastRenderTime = 0;
   const FRAME_INTERVAL = getPanelFrameInterval('linebed');
+
+  // Multi-pass moving average smoothing (from musicvid.org AnalyseFunctions.js)
+  function smoothSpectrum(data: Float32Array): Float32Array {
+    const result = new Float32Array(data.length);
+    result.set(data);
+    const halfPoints = Math.floor(SMOOTHING_POINTS / 2);
+
+    for (let pass = 0; pass < SMOOTHING_PASSES; pass++) {
+      const prev = new Float32Array(result);
+      for (let i = 0; i < result.length; i++) {
+        let sum = 0;
+        let count = 0;
+        for (let j = -halfPoints; j <= halfPoints; j++) {
+          const idx = i + j;
+          if (idx >= 0 && idx < prev.length) {
+            sum += prev[idx];
+            count++;
+          }
+        }
+        result[i] = sum / count;
+      }
+    }
+    return result;
+  }
 
   // Colors from artwork
   let lineColor = $state({ r: 255, g: 255, b: 255 });
@@ -124,15 +153,24 @@
         const bytes = new Uint8Array(payload);
         const floats = new Float32Array(bytes.buffer);
         if (floats.length === NUM_BANDS) {
+          // Temporal smoothing between frames
           for (let i = 0; i < NUM_BANDS; i++) {
             smoothedData[i] = smoothedData[i] * SMOOTHING + floats[i] * (1 - SMOOTHING);
           }
 
-          // Push snapshot into history every 2nd frame for slower scroll
+          // Apply spatial smoothing (multi-pass moving average)
+          const spatialSmoothed = smoothSpectrum(smoothedData);
+
+          // Apply exponential transform for peak emphasis
+          for (let i = 0; i < NUM_BANDS; i++) {
+            spatialSmoothed[i] = Math.pow(spatialSmoothed[i], SPECTRUM_EXPONENT);
+          }
+
+          // Push processed snapshot into history every other frame
           frameCounter++;
           if (frameCounter >= 2) {
             frameCounter = 0;
-            history[historyIndex].set(smoothedData);
+            history[historyIndex].set(spatialSmoothed);
             historyIndex = (historyIndex + 1) % NUM_LINES;
           }
         }
@@ -140,6 +178,43 @@
     });
 
     render(0);
+  }
+
+  // Build a smooth curve path through spectrum points
+  function buildSpectrumPath(
+    spectrum: Float32Array,
+    lineLeft: number,
+    currentLineWidth: number,
+    baseY: number,
+    maxAmplitude: number
+  ) {
+    if (!ctx) return;
+
+    ctx.moveTo(lineLeft, baseY);
+
+    for (let p = 0; p < NUM_BANDS; p++) {
+      const xFraction = p / (NUM_BANDS - 1);
+      const xPos = lineLeft + xFraction * currentLineWidth;
+      const amp = spectrum[p];
+      const yPos = baseY - amp * maxAmplitude;
+
+      if (p === 0) {
+        ctx.lineTo(xPos, yPos);
+      } else {
+        // Quadratic curve smoothing between consecutive points
+        const prevFraction = (p - 1) / (NUM_BANDS - 1);
+        const prevX = lineLeft + prevFraction * currentLineWidth;
+        const prevY = baseY - spectrum[p - 1] * maxAmplitude;
+        const cpX = (prevX + xPos) / 2;
+        const cpY = (prevY + yPos) / 2;
+        ctx.quadraticCurveTo(prevX, prevY, cpX, cpY);
+      }
+    }
+
+    // Final point
+    const lastX = lineLeft + currentLineWidth;
+    const lastY = baseY - spectrum[NUM_BANDS - 1] * maxAmplitude;
+    ctx.lineTo(lastX, lastY);
   }
 
   function render(timestamp: number = 0) {
@@ -169,22 +244,14 @@
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, width, height);
 
-    // Linebed rendering area
-    const bedLeft = width * 0.08;
-    const bedRight = width * 0.92;
-    const bedWidth = bedRight - bedLeft;
-    const bedTop = height * 0.15;
-    const bedBottom = height * 0.85;
+    // Terrain rendering area — use most of the canvas
+    const bedTop = height * 0.08;
+    const bedBottom = height * 0.92;
     const bedHeight = bedBottom - bedTop;
 
-    // Perspective parameters
-    const vanishY = bedTop - bedHeight * 0.3; // Vanishing point above the bed
-    const frontLineWidth = bedWidth;
-    const backLineWidth = bedWidth * 0.35;
-
-    // Subsample bands for smoother lines (use every ~2nd band)
-    const step = 2;
-    const numPoints = Math.floor(NUM_BANDS / step);
+    // Perspective: back lines narrow, front lines wide (full canvas width)
+    const frontLineWidth = width * 0.95;
+    const backLineWidth = width * 0.18;
 
     // Draw lines from back (oldest) to front (newest) for correct occlusion
     for (let lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
@@ -192,89 +259,41 @@
       const bufIdx = (historyIndex + lineIdx) % NUM_LINES;
       const spectrum = history[bufIdx];
 
-      // Interpolation factor: 0=back, 1=front
-      const lineFactor = lineIdx / (NUM_LINES - 1);
+      // Non-linear depth factor: compress lines at back, spread at front
+      // Uses a power curve for perspective compression
+      const rawFactor = lineIdx / (NUM_LINES - 1);
+      const depthFactor = Math.pow(rawFactor, 1.6);
 
       // Y position: back lines near top, front lines near bottom
-      const baseY = bedTop + lineFactor * bedHeight;
+      const baseY = bedTop + depthFactor * bedHeight;
 
       // Line width: narrower at back, wider at front (perspective)
-      const currentLineWidth = backLineWidth + lineFactor * (frontLineWidth - backLineWidth);
+      const currentLineWidth = backLineWidth + depthFactor * (frontLineWidth - backLineWidth);
       const lineLeft = (width - currentLineWidth) / 2;
 
-      // Amplitude scale: taller at front
-      const amplitudeScale = 0.15 + lineFactor * 0.85;
-      const maxAmplitude = bedHeight * 0.28 * amplitudeScale;
+      // Amplitude scale: much taller at front, tiny at back
+      const amplitudeScale = 0.05 + depthFactor * 0.95;
+      const maxAmplitude = bedHeight * 0.4 * amplitudeScale;
 
-      // Opacity: fainter at back
-      const opacity = 0.08 + lineFactor * 0.92;
+      // Opacity: fades to near-invisible at back
+      const opacity = 0.03 + depthFactor * 0.97;
 
-      // Build the line path
+      // Occlusion pass: fill below the spectrum line with black
       ctx.beginPath();
-      ctx.moveTo(lineLeft, baseY);
-
-      for (let p = 0; p < numPoints; p++) {
-        const bandIdx = p * step;
-        const x = lineLeft + (p / (numPoints - 1)) * currentLineWidth;
-        const amplitude = spectrum[bandIdx];
-        const y = baseY - amplitude * maxAmplitude;
-        if (p === 0) {
-          ctx.lineTo(x, y);
-        } else {
-          // Smooth with quadratic curves
-          const prevBandIdx = (p - 1) * step;
-          const prevX = lineLeft + ((p - 1) / (numPoints - 1)) * currentLineWidth;
-          const prevAmplitude = spectrum[prevBandIdx];
-          const prevY = baseY - prevAmplitude * maxAmplitude;
-          const cpX = (prevX + x) / 2;
-          const cpY = (prevY + y) / 2;
-          ctx.quadraticCurveTo(prevX, prevY, cpX, cpY);
-        }
-      }
-
-      // Close the last point
-      const lastBandIdx = (numPoints - 1) * step;
-      const lastX = lineLeft + currentLineWidth;
-      const lastY = baseY - spectrum[lastBandIdx] * maxAmplitude;
-      ctx.lineTo(lastX, lastY);
-
-      // Close the shape below for occlusion fill
-      ctx.lineTo(lineLeft + currentLineWidth, baseY + 2);
-      ctx.lineTo(lineLeft, baseY + 2);
+      buildSpectrumPath(spectrum, lineLeft, currentLineWidth, baseY, maxAmplitude);
+      // Close shape below for occlusion
+      ctx.lineTo(lineLeft + currentLineWidth, baseY + 3);
+      ctx.lineTo(lineLeft, baseY + 3);
       ctx.closePath();
-
-      // Fill with black for occlusion (hides lines behind)
       ctx.fillStyle = '#000000';
       ctx.fill();
 
-      // Draw the line stroke on top
-      // Rebuild just the top path for stroke
+      // Stroke pass: draw the spectrum line on top
       ctx.beginPath();
-      ctx.moveTo(lineLeft, baseY);
+      buildSpectrumPath(spectrum, lineLeft, currentLineWidth, baseY, maxAmplitude);
 
-      for (let p = 0; p < numPoints; p++) {
-        const bandIdx = p * step;
-        const x = lineLeft + (p / (numPoints - 1)) * currentLineWidth;
-        const amplitude = spectrum[bandIdx];
-        const y = baseY - amplitude * maxAmplitude;
-        if (p === 0) {
-          ctx.lineTo(x, y);
-        } else {
-          const prevBandIdx = (p - 1) * step;
-          const prevX = lineLeft + ((p - 1) / (numPoints - 1)) * currentLineWidth;
-          const prevAmplitude = spectrum[prevBandIdx];
-          const prevY = baseY - prevAmplitude * maxAmplitude;
-          const cpX = (prevX + x) / 2;
-          const cpY = (prevY + y) / 2;
-          ctx.quadraticCurveTo(prevX, prevY, cpX, cpY);
-        }
-      }
-
-      const lastY2 = baseY - spectrum[lastBandIdx] * maxAmplitude;
-      ctx.lineTo(lastX, lastY2);
-
-      // Stroke with line color and opacity
-      const lineWeight = 0.5 + lineFactor * 1.0;
+      // Line weight: thicker at front
+      const lineWeight = 0.3 + depthFactor * 1.2;
       ctx.strokeStyle = `rgba(${lineColor.r}, ${lineColor.g}, ${lineColor.b}, ${opacity})`;
       ctx.lineWidth = lineWeight;
       ctx.stroke();
