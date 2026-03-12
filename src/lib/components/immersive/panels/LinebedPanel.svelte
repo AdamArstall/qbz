@@ -244,58 +244,59 @@
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, width, height);
 
-    // Terrain rendering area — use most of the canvas
-    const bedTop = height * 0.08;
-    const bedBottom = height * 0.92;
-    const bedHeight = bedBottom - bedTop;
+    // Isometric perspective matching musicvid.org's camera angle:
+    // camera at (-80, 150, -10) looking at (0, 0, -100)
+    // This creates an elevated view where the terrain stretches from
+    // the upper-right (vanishing point) toward the lower-left (viewer).
 
-    // Perspective: back lines narrow, front lines wide (full canvas width)
-    const frontLineWidth = width * 0.95;
-    const backLineWidth = width * 0.18;
+    // Vanishing point: upper-right area of the canvas
+    const vanishX = width * 0.75;
+    const vanishY = height * 0.08;
+
+    // Front line anchors: wide line near the bottom of canvas
+    const frontLeftX = -width * 0.15;
+    const frontRightX = width * 0.85;
+    const frontY = height * 0.95;
+    const frontLineWidth = frontRightX - frontLeftX;
 
     // Draw lines from back to front (painter's algorithm).
-    // lineIdx 0 = back (top, narrow, faded), lineIdx N-1 = front (bottom, wide, bright).
-    // Data direction: NEWEST at back, scrolls toward front (musicvid.org LineBed style).
-    // This creates the "audio flowing from far away toward the viewer" effect.
+    // Data direction: NEWEST at back (vanishing point), scrolls toward front/viewer.
     for (let lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
       // Reverse mapping: lineIdx=0 (back) = newest data, lineIdx=N-1 (front) = oldest
-      // historyIndex-1 = most recently written snapshot
       const bufIdx = (historyIndex - 1 - lineIdx + NUM_LINES * 2) % NUM_LINES;
       const spectrum = history[bufIdx];
 
-      // Non-linear depth factor: compress lines at back, spread at front
+      // Non-linear depth: compress lines at back (vanishing), spread at front
       const rawFactor = lineIdx / (NUM_LINES - 1);
-      const depthFactor = Math.pow(rawFactor, 1.6);
+      const depthFactor = Math.pow(rawFactor, 1.8);
 
-      // Y position: back lines near top, front lines near bottom
-      const baseY = bedTop + depthFactor * bedHeight;
+      // Interpolate position from vanishing point to front
+      const lineLeftX = vanishX + (frontLeftX - vanishX) * depthFactor;
+      const lineRightX = vanishX + (frontRightX - vanishX) * depthFactor;
+      const baseY = vanishY + (frontY - vanishY) * depthFactor;
+      const currentLineWidth = lineRightX - lineLeftX;
 
-      // Line width: narrower at back, wider at front (perspective)
-      const currentLineWidth = backLineWidth + depthFactor * (frontLineWidth - backLineWidth);
-      const lineLeft = (width - currentLineWidth) / 2;
+      // Amplitude: scales with perspective depth
+      const amplitudeScale = 0.05 + depthFactor * 0.95;
+      const maxAmplitude = height * 0.35 * amplitudeScale;
 
-      // Amplitude: back lines (newest, active audio) have visible peaks,
-      // front lines (oldest, decayed) are flatter. Scale by depth for perspective.
-      const amplitudeScale = 0.1 + depthFactor * 0.9;
-      const maxAmplitude = bedHeight * 0.45 * amplitudeScale;
-
-      // Opacity: back lines slightly faded for depth, front lines bright
-      const opacity = 0.06 + depthFactor * 0.94;
+      // Opacity: fades at back, bright at front
+      const opacity = 0.04 + depthFactor * 0.96;
 
       // Occlusion pass: fill below the spectrum line with black
       ctx.beginPath();
-      buildSpectrumPath(spectrum, lineLeft, currentLineWidth, baseY, maxAmplitude);
-      ctx.lineTo(lineLeft + currentLineWidth, baseY + 3);
-      ctx.lineTo(lineLeft, baseY + 3);
+      buildSpectrumPath(spectrum, lineLeftX, currentLineWidth, baseY, maxAmplitude);
+      ctx.lineTo(lineLeftX + currentLineWidth, baseY + 4);
+      ctx.lineTo(lineLeftX, baseY + 4);
       ctx.closePath();
       ctx.fillStyle = '#000000';
       ctx.fill();
 
       // Stroke pass: draw the spectrum line on top
       ctx.beginPath();
-      buildSpectrumPath(spectrum, lineLeft, currentLineWidth, baseY, maxAmplitude);
+      buildSpectrumPath(spectrum, lineLeftX, currentLineWidth, baseY, maxAmplitude);
 
-      const lineWeight = 0.3 + depthFactor * 1.2;
+      const lineWeight = 0.2 + depthFactor * 1.3;
       ctx.strokeStyle = `rgba(${lineColor.r}, ${lineColor.g}, ${lineColor.b}, ${opacity})`;
       ctx.lineWidth = lineWeight;
       ctx.stroke();
