@@ -304,13 +304,13 @@
     // Large vertical spread (lines go from near-top to near-bottom),
     // contained width. Like a portrait-oriented table seen from above.
 
-    // Back line (far, top of canvas)
+    // Back line (far, top of canvas) — narrower for more trapezoid effect
     const backY = height * 0.12;
-    const backLineWidth = width * 0.48;
+    const backLineWidth = width * 0.32;
 
-    // Front line (near, bottom of canvas)
+    // Front line (near, bottom of canvas) — wider base
     const frontY = height * 0.88;
-    const frontLineWidth = width * 0.72;
+    const frontLineWidth = width * 0.88;
 
     // Draw lines from back to front (painter's algorithm).
     for (let lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
