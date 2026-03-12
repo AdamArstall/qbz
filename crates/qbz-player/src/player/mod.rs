@@ -1903,13 +1903,6 @@ impl Player {
                             }
                         };
 
-                        // Only Rodio supports sink queueing
-                        if engine.is_alsa_direct() {
-                            log::info!("Gapless: ALSA Direct backend, cannot queue — ignoring PlayNext for track {}", track_id);
-                            thread_state.set_gapless_ready(false);
-                            return;
-                        }
-
                         // Verify format compatibility (same sample rate and channels)
                         if let (Some(cur_sr), Some(cur_ch)) = (*current_sample_rate, *current_channels) {
                             if sample_rate != cur_sr || channels != cur_ch {
@@ -2067,6 +2060,29 @@ impl Player {
                                         thread_state.set_gapless_next_track_id(0);
                                         gapless_pending = None;
                                         gapless_request_armed = false;
+                                    }
+                                }
+
+                                // ALSA Direct gapless: the writer thread signals transitions
+                                // via an atomic flag instead of position-based detection
+                                if let Some(ref engine) = current_engine {
+                                    if engine.take_source_transition() {
+                                        if let Some(ref pending) = gapless_pending {
+                                            log::info!(
+                                                "ALSA Direct gapless transition: track {} -> {}",
+                                                thread_state.current_track_id.load(Ordering::SeqCst),
+                                                pending.track_id
+                                            );
+                                            thread_state.current_track_id.store(pending.track_id, Ordering::SeqCst);
+                                            thread_state.duration.store(pending.duration_secs, Ordering::SeqCst);
+                                            thread_state.start_playback_timer(0);
+                                            current_audio_data = Some(pending.data.clone());
+                                            current_normalization_gain = pending.normalization_gain;
+                                            thread_state.set_normalization_gain(pending.normalization_gain);
+                                            thread_state.set_gapless_next_track_id(0);
+                                            gapless_pending = None;
+                                            gapless_request_armed = false;
+                                        }
                                     }
                                 }
 
