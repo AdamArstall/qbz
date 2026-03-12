@@ -143,7 +143,9 @@ export function evaluateQconnectPlaybackReportSkip(params: {
     queueSnapshot.queue_items.some((item) => item.track_id === currentTrackId) ||
     queueSnapshot.autoplay_items.some((item) => item.track_id === currentTrackId);
 
-  if (remoteQueueContainsTrack || rendererSnapshot?.current_track?.track_id != null) {
+  const rendererCurrentTrackId = rendererSnapshot?.current_track?.track_id ?? null;
+
+  if (remoteQueueContainsTrack || rendererCurrentTrackId === currentTrackId) {
     return {
       shouldSkip: false,
       nextSkipSignature: '',
@@ -162,6 +164,7 @@ export function evaluateQconnectPlaybackReportSkip(params: {
       : {
           reason: 'local_track_not_in_remote_queue',
           current_track_id: currentTrackId,
+          renderer_current_track_id: rendererCurrentTrackId,
           remote_queue_preview: queueSnapshot.queue_items.slice(0, 6),
           renderer_current: rendererSnapshot?.current_track ?? null,
           renderer_next: rendererSnapshot?.next_track ?? null

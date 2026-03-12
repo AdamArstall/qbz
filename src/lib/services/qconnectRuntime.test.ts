@@ -54,6 +54,7 @@ describe('evaluateQconnectPlaybackReportSkip', () => {
     expect(result.diagnosticPayload).toEqual({
       reason: 'local_track_not_in_remote_queue',
       current_track_id: 46848340,
+      renderer_current_track_id: null,
       remote_queue_preview: buildQueueSnapshot([193849747, 23943863, 218534]).queue_items,
       renderer_current: null,
       renderer_next: { track_id: 23943863, queue_item_id: 2 }
@@ -81,12 +82,35 @@ describe('evaluateQconnectPlaybackReportSkip', () => {
     });
   });
 
-  it('does not skip when renderer already has a current remote track', () => {
+  it('skips when renderer current track is stale and does not match the local track', () => {
     const result = evaluateQconnectPlaybackReportSkip({
       currentTrackId: 46848340,
       queueSnapshot: buildQueueSnapshot([193849747, 23943863, 218534]),
       rendererSnapshot: {
         current_track: { track_id: 193849747, queue_item_id: 1 },
+        next_track: { track_id: 23943863, queue_item_id: 2 }
+      },
+      lastSkipSignature: ''
+    });
+
+    expect(result.shouldSkip).toBe(true);
+    expect(result.nextSkipSignature).toBe('46848340:2.1');
+    expect(result.diagnosticPayload).toEqual({
+      reason: 'local_track_not_in_remote_queue',
+      current_track_id: 46848340,
+      renderer_current_track_id: 193849747,
+      remote_queue_preview: buildQueueSnapshot([193849747, 23943863, 218534]).queue_items,
+      renderer_current: { track_id: 193849747, queue_item_id: 1 },
+      renderer_next: { track_id: 23943863, queue_item_id: 2 }
+    });
+  });
+
+  it('does not skip when renderer current track already matches the local track', () => {
+    const result = evaluateQconnectPlaybackReportSkip({
+      currentTrackId: 46848340,
+      queueSnapshot: buildQueueSnapshot([193849747, 23943863, 218534]),
+      rendererSnapshot: {
+        current_track: { track_id: 46848340, queue_item_id: 999 },
         next_track: { track_id: 23943863, queue_item_id: 2 }
       },
       lastSkipSignature: ''

@@ -810,6 +810,19 @@ impl QconnectServiceState {
         }
     }
 
+    async fn get_renderer_track_ids(&self) -> (Option<u64>, Option<u64>) {
+        let guard = self.inner.lock().await;
+        if let Some(runtime) = &guard.runtime {
+            let sync_state = runtime.sync_state.lock().await;
+            (
+                sync_state.last_renderer_track_id,
+                sync_state.last_renderer_next_track_id,
+            )
+        } else {
+            (None, None)
+        }
+    }
+
     /// Look up queue_item_id by track_id from the QConnect queue state.
     /// Searches queue_items first, then autoplay_items.
     /// Also updates sync_state so future lookups are fast.
@@ -1798,6 +1811,7 @@ pub async fn v2_qconnect_report_playback_state(
     } else {
         "renderer_snapshot".to_string()
     };
+    let (renderer_current_track_id, _renderer_next_track_id) = service.get_renderer_track_ids().await;
 
     // Auto-fill queue_item_ids from renderer state if not provided by frontend.
     // The frontend doesn't know about QConnect queue_item_ids, but the renderer
@@ -1833,6 +1847,48 @@ pub async fn v2_qconnect_report_playback_state(
     }
 
     let queue_version = service.get_queue_version().await;
+
+    let should_skip_due_to_stale_renderer =
+        should_skip_renderer_report_due_to_stale_snapshot(
+            current_track_id,
+            requested_current_qid,
+            resolved_current_qid,
+            renderer_current_track_id,
+        );
+
+    if should_skip_due_to_stale_renderer {
+        resolution_strategy = "suppressed_stale_renderer_snapshot_mismatch".to_string();
+        if let Err(err) = app_handle.emit(
+            "qconnect:renderer_report_debug",
+            &QconnectRendererReportDebugEvent {
+                requested_current_queue_item_id: requested_current_qid,
+                requested_next_queue_item_id: requested_next_qid,
+                resolved_current_queue_item_id: resolved_current_qid,
+                resolved_next_queue_item_id: resolved_next_qid,
+                sent_current_queue_item_id: None,
+                sent_next_queue_item_id: None,
+                current_track_id,
+                playing_state,
+                current_position,
+                duration,
+                queue_version: QconnectQueueVersionPayload {
+                    major: queue_version.major,
+                    minor: queue_version.minor,
+                },
+                resolution_strategy,
+            },
+        ) {
+            log::debug!("[QConnect] Failed to emit stale renderer report debug event: {err}");
+        }
+
+        if let Some(pos) = current_position {
+            if pos >= 0 {
+                service.update_renderer_position(pos as u64).await;
+            }
+        }
+
+        return Ok(());
+    }
 
     log::debug!(
         "[QConnect/Report] Periodic state report: playing={} pos={:?} dur={:?} qid={:?} next_qid={:?} track_id={:?} qv={}.{}",
@@ -1903,6 +1959,27 @@ pub async fn v2_qconnect_report_playback_state(
     }
 
     Ok(())
+}
+
+fn should_skip_renderer_report_due_to_stale_snapshot(
+    current_track_id: Option<i64>,
+    requested_current_qid: Option<i32>,
+    resolved_current_qid: Option<i32>,
+    renderer_current_track_id: Option<u64>,
+) -> bool {
+    if requested_current_qid.is_some() || resolved_current_qid.is_some() {
+        return false;
+    }
+
+    let Some(local_track_id) = current_track_id.filter(|track_id| *track_id > 0) else {
+        return false;
+    };
+
+    let Some(renderer_track_id) = renderer_current_track_id else {
+        return false;
+    };
+
+    renderer_track_id != local_track_id as u64
 }
 
 /// Report volume change to QConnect server.
@@ -2141,7 +2218,8 @@ fn decode_hex_channel(raw: &str) -> Result<Vec<u8>, String> {
 mod tests {
     use super::{
         decode_hex_channel, normalize_volume_to_fraction, parse_subscribe_channels,
-        QconnectHandoffIntent, QconnectOutboundCommandType, QconnectTrackOrigin,
+        should_skip_renderer_report_due_to_stale_snapshot, QconnectHandoffIntent,
+        QconnectOutboundCommandType, QconnectTrackOrigin,
     };
     use qconnect_app::{resolve_handoff_intent, QueueCommandType};
 
@@ -2217,5 +2295,35 @@ mod tests {
             QconnectHandoffIntent::from_core(resolve_handoff_intent(qobuz_core_origin)),
             QconnectHandoffIntent::SendToConnect
         );
+    }
+
+    #[test]
+    fn skips_renderer_report_when_local_track_and_renderer_snapshot_disagree() {
+        assert!(should_skip_renderer_report_due_to_stale_snapshot(
+            Some(388712168),
+            None,
+            None,
+            Some(193849747),
+        ));
+    }
+
+    #[test]
+    fn does_not_skip_renderer_report_when_snapshot_matches_local_track() {
+        assert!(!should_skip_renderer_report_due_to_stale_snapshot(
+            Some(388712168),
+            None,
+            None,
+            Some(388712168),
+        ));
+    }
+
+    #[test]
+    fn does_not_skip_renderer_report_once_current_queue_item_id_is_resolved() {
+        assert!(!should_skip_renderer_report_due_to_stale_snapshot(
+            Some(388712168),
+            None,
+            Some(42),
+            Some(193849747),
+        ));
     }
 }
