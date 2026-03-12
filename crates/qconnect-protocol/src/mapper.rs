@@ -1048,6 +1048,59 @@ mod tests {
     }
 
     #[test]
+    fn encodes_queue_load_tracks_with_android_like_fields() {
+        let command = QueueCommand::new(
+            QueueCommandType::CtrlSrvrQueueLoadTracks,
+            "f997cd72-d2ce-4121-a89b-75bf2be251ec",
+            QueueVersion::new(12, 4),
+            json!({
+                "track_ids": [2001, 2002, 2003],
+                "queue_position": 0,
+                "shuffle_mode": true,
+                "shuffle_seed": 3344,
+                "shuffle_pivot_index": 1,
+                "context_uuid": "a3f7be0f-3854-44c6-9194-c93cedec322a",
+                "autoplay_reset": true
+            }),
+        );
+
+        let payload = encode_queue_command_batch(&command).expect("batch payload");
+        let decoded = QConnectMessages::decode(payload.as_slice()).expect("decode batch");
+        assert_eq!(decoded.messages.len(), 1);
+
+        let message = &decoded.messages[0];
+        assert_eq!(
+            message.message_type,
+            Some(QConnectMessageType::MessageTypeCtrlSrvrQueueLoadTracks as i32)
+        );
+
+        let load = message
+            .ctrl_srvr_queue_load_tracks
+            .as_ref()
+            .expect("queue load payload");
+        assert_eq!(load.track_ids, vec![2001, 2002, 2003]);
+        assert_eq!(load.queue_position, Some(0));
+        assert_eq!(load.shuffle_mode, Some(true));
+        assert_eq!(load.shuffle_seed, Some(3344));
+        assert_eq!(load.shuffle_pivot_index, Some(1));
+        assert_eq!(load.autoplay_reset, Some(true));
+        assert_eq!(load.autoplay_loading, Some(true));
+        assert_eq!(
+            load.queue_version_ref
+                .as_ref()
+                .and_then(|version| version.major),
+            Some(12)
+        );
+        assert_eq!(
+            load.queue_version_ref
+                .as_ref()
+                .and_then(|version| version.minor),
+            Some(4)
+        );
+        assert_eq!(load.context_uuid.as_ref().map(|uuid| uuid.len()), Some(16));
+    }
+
+    #[test]
     fn encodes_renderer_state_updated_report_with_queue_version() {
         let report = RendererReport::new(
             RendererReportType::RndrSrvrStateUpdated,

@@ -1051,5 +1051,20 @@ mod tests {
         assert!(sent
             .iter()
             .any(|msg| msg.message_type == "MESSAGE_TYPE_RNDR_SRVR_VOLUME_CHANGED"));
+
+        let state_update = sent
+            .iter()
+            .find(|msg| msg.message_type == "MESSAGE_TYPE_RNDR_SRVR_STATE_UPDATED")
+            .expect("state update report");
+        assert!(state_update
+            .payload
+            .get("current_queue_item_id")
+            .expect("current_queue_item_id field")
+            .is_null());
+        assert!(state_update
+            .payload
+            .get("next_queue_item_id")
+            .expect("next_queue_item_id field")
+            .is_null());
     }
 }
