@@ -676,7 +676,7 @@
     'Español': 'es',
     'Français': 'fr',
     'Deutsch': 'de',
-    'Português (Brasil)': 'pt'
+    'Português': 'pt'
   };
 
   const localeToLanguage: Record<string, string> = {
@@ -684,11 +684,11 @@
     'es': 'Español',
     'fr': 'Français',
     'de': 'Deutsch',
-    'pt': 'Português (Brasil)'
+    'pt': 'Português'
   };
 
   // Available languages (only those with translations)
-  const availableLanguages = ['Auto', 'English', 'Español', 'Français', 'Deutsch', 'Português (Brasil)'];
+  const availableLanguages = ['Auto', 'English', 'Español', 'Français', 'Deutsch', 'Português'];
 
   // Font family selection
   const fontFamilies: Record<string, string> = {

@@ -51,7 +51,7 @@ export const locales = [
   { code: 'es', name: 'Spanish', nativeName: 'Español' },
   { code: 'fr', name: 'French', nativeName: 'Français' },
   { code: 'de', name: 'German', nativeName: 'Deutsch' },
-  { code: 'pt', name: 'Portuguese', nativeName: 'Português (Brasil)' },
+  { code: 'pt', name: 'Portuguese', nativeName: 'Português' },
 ] as const;
 
 export type LocaleCode = (typeof locales)[number]['code'];
