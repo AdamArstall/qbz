@@ -41,7 +41,7 @@
     format
   }: Props = $props();
 
-  const NUM_BANDS = 190;
+  const NUM_BANDS = 512;
   const HISTORY_BINS = 4096;
   const FRAME_INTERVAL_MS = getPanelFrameInterval('spectral-ribbon');
 
