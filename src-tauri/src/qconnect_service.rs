@@ -356,6 +356,7 @@ struct QconnectRendererReportDebugEvent {
     resolved_next_queue_item_id: Option<i32>,
     sent_current_queue_item_id: Option<i32>,
     sent_next_queue_item_id: Option<i32>,
+    report_queue_item_ids: bool,
     current_track_id: Option<i64>,
     playing_state: i32,
     current_position: Option<i32>,
@@ -870,35 +871,37 @@ impl QconnectServiceState {
         }
     }
 
-    /// Look up queue_item_id by track_id from the QConnect queue state.
-    /// Searches queue_items first, then autoplay_items.
-    /// Also updates sync_state so future lookups are fast.
-    async fn lookup_queue_item_id_by_track_id(&self, track_id: u64) -> Option<u64> {
+    /// Resolve the current and next queue_item_ids from the QConnect queue state.
+    /// Searches queue_items first, then autoplay_items, and caches the result in sync_state.
+    async fn resolve_queue_item_ids_by_track_id(
+        &self,
+        track_id: u64,
+    ) -> (Option<u64>, Option<u64>) {
         let (app, sync_state) = {
             let guard = self.inner.lock().await;
-            let runtime = guard.runtime.as_ref()?;
+            let Some(runtime) = guard.runtime.as_ref() else {
+                return (None, None);
+            };
             (Arc::clone(&runtime.app), Arc::clone(&runtime.sync_state))
         };
 
         let queue = app.queue_state_snapshot().await;
-        let found = queue
-            .queue_items
-            .iter()
-            .chain(queue.autoplay_items.iter())
-            .find(|item| item.track_id == track_id);
+        let (current_qid, next_qid, next_track_id) =
+            resolve_queue_item_ids_from_queue_state(&queue, track_id);
 
-        if let Some(item) = found {
-            let qid = item.queue_item_id;
-            // Cache in sync_state for future reports
+        if let Some(current_qid) = current_qid {
             let mut state = sync_state.lock().await;
-            state.last_renderer_queue_item_id = Some(qid);
+            state.last_renderer_queue_item_id = Some(current_qid);
+            state.last_renderer_next_queue_item_id = next_qid;
             state.last_renderer_track_id = Some(track_id);
+            state.last_renderer_next_track_id = next_track_id;
             log::debug!(
-                "[QConnect] Resolved queue_item_id={} for track_id={} from queue state",
-                qid,
+                "[QConnect] Resolved queue_item_ids current={:?} next={:?} for track_id={} from queue state",
+                current_qid,
+                next_qid,
                 track_id
             );
-            Some(qid)
+            (Some(current_qid), next_qid)
         } else {
             log::debug!(
                 "[QConnect] Could not find track_id={} in queue state ({} queue_items, {} autoplay_items)",
@@ -906,9 +909,63 @@ impl QconnectServiceState {
                 queue.queue_items.len(),
                 queue.autoplay_items.len()
             );
-            None
+            (None, None)
         }
     }
+}
+
+fn resolve_queue_item_ids_from_queue_state(
+    queue: &QConnectQueueState,
+    track_id: u64,
+) -> (Option<u64>, Option<u64>, Option<u64>) {
+    if let Some(current_index) = queue
+        .queue_items
+        .iter()
+        .position(|item| item.track_id == track_id)
+    {
+        let current_item = &queue.queue_items[current_index];
+        let next_item = if queue.shuffle_mode {
+            queue
+                .shuffle_order
+                .as_ref()
+                .and_then(|order| {
+                    order
+                        .iter()
+                        .position(|queue_index| *queue_index == current_index)
+                        .and_then(|order_index| order.get(order_index + 1))
+                        .and_then(|queue_index| queue.queue_items.get(*queue_index))
+                })
+                .or_else(|| queue.queue_items.get(current_index + 1))
+                .or_else(|| queue.autoplay_items.first())
+        } else {
+            queue
+                .queue_items
+                .get(current_index + 1)
+                .or_else(|| queue.autoplay_items.first())
+        };
+
+        return (
+            Some(current_item.queue_item_id),
+            next_item.map(|item| item.queue_item_id),
+            next_item.map(|item| item.track_id),
+        );
+    }
+
+    if let Some(current_index) = queue
+        .autoplay_items
+        .iter()
+        .position(|item| item.track_id == track_id)
+    {
+        let current_item = &queue.autoplay_items[current_index];
+        let next_item = queue.autoplay_items.get(current_index + 1);
+        return (
+            Some(current_item.queue_item_id),
+            next_item.map(|item| item.queue_item_id),
+            next_item.map(|item| item.track_id),
+        );
+    }
+
+    (None, None, None)
 }
 
 impl Default for QconnectServiceState {
@@ -1859,6 +1916,9 @@ pub async fn v2_qconnect_report_playback_state(
         "renderer_snapshot".to_string()
     };
     let (renderer_current_track_id, _renderer_next_track_id) = service.get_renderer_track_ids().await;
+    let current_track_id_u64 = current_track_id
+        .filter(|track_id| *track_id > 0)
+        .map(|track_id| track_id as u64);
 
     // Auto-fill queue_item_ids from renderer state if not provided by frontend.
     // The frontend doesn't know about QConnect queue_item_ids, but the renderer
@@ -1872,19 +1932,33 @@ pub async fn v2_qconnect_report_playback_state(
             renderer_next.and_then(|id| i32::try_from(id).ok()),
         )
     };
+    let mut resolved_next_qid = resolved_next_qid;
 
-    // If we still don't have a current_queue_item_id but the frontend sent
-    // a track_id, try to resolve it from the QConnect queue state.
-    if resolved_current_qid.is_none() {
-        if let Some(track_id) = current_track_id {
-            if track_id > 0 {
-                if let Some(qid) = service
-                    .lookup_queue_item_id_by_track_id(track_id as u64)
-                    .await
-                {
-                    resolved_current_qid = i32::try_from(qid).ok();
-                    resolution_strategy = "queue_lookup_by_track_id".to_string();
+    // Prefer a fresh queue lookup whenever the local track differs from the
+    // cached renderer snapshot, or when the caller explicitly wants queue IDs
+    // for a real track transition.
+    if let Some(track_id) = current_track_id_u64 {
+        let should_refresh_from_queue = requested_current_qid.is_none()
+            && (
+                resolved_current_qid.is_none()
+                    || renderer_current_track_id != Some(track_id)
+            );
+
+        if should_refresh_from_queue {
+            let (queue_current_qid, queue_next_qid) = service
+                .resolve_queue_item_ids_by_track_id(track_id)
+                .await;
+
+            if let Some(qid) = queue_current_qid.and_then(|qid| i32::try_from(qid).ok()) {
+                resolved_current_qid = Some(qid);
+                if requested_next_qid.is_none() {
+                    resolved_next_qid = queue_next_qid.and_then(|next_qid| i32::try_from(next_qid).ok());
                 }
+                resolution_strategy = if renderer_current_track_id == Some(track_id) {
+                    "queue_lookup_confirmed".to_string()
+                } else {
+                    "queue_lookup_track_transition".to_string()
+                };
             }
         }
     }
@@ -1894,6 +1968,11 @@ pub async fn v2_qconnect_report_playback_state(
     }
 
     let queue_version = service.get_queue_version().await;
+    let should_report_queue_item_ids = requested_current_qid.is_some()
+        || matches!(
+            (current_track_id_u64, resolved_current_qid),
+            (Some(track_id), Some(_)) if renderer_current_track_id != Some(track_id)
+        );
 
     let should_skip_due_to_stale_renderer =
         should_skip_renderer_report_due_to_stale_snapshot(
@@ -1914,6 +1993,7 @@ pub async fn v2_qconnect_report_playback_state(
                 resolved_next_queue_item_id: resolved_next_qid,
                 sent_current_queue_item_id: None,
                 sent_next_queue_item_id: None,
+                report_queue_item_ids: should_report_queue_item_ids,
                 current_track_id,
                 playing_state,
                 current_position,
@@ -1944,13 +2024,19 @@ pub async fn v2_qconnect_report_playback_state(
         queue_version.major, queue_version.minor
     );
 
-    // NOTE: We intentionally OMIT current_queue_item_id and next_queue_item_id
-    // from periodic state reports. The server validates these IDs against its
-    // queue state and rejects reports when IDs don't match (returns "Current track
-    // not found in queue nor autoplay"). This happens consistently after QBZ-initiated
-    // queue loads where the server assigns non-standard queue_item_ids.
-    // The server already knows the current track from SET_STATE commands and adds
-    // the correct queue_item_id when forwarding to controllers.
+    let sent_current_qid = if should_report_queue_item_ids {
+        resolved_current_qid
+    } else {
+        None
+    };
+    let sent_next_qid = if should_report_queue_item_ids {
+        resolved_next_qid
+    } else {
+        None
+    };
+
+    // Keep periodic interval reports conservative, but allow transition reports
+    // to carry queue_item_ids once they are re-resolved from the current track.
     let report = RendererReport::new(
         RendererReportType::RndrSrvrStateUpdated,
         Uuid::new_v4().to_string(),
@@ -1960,8 +2046,8 @@ pub async fn v2_qconnect_report_playback_state(
             "buffer_state": BUFFER_STATE_OK,
             "current_position": current_position,
             "duration": duration,
-            "current_queue_item_id": null,
-            "next_queue_item_id": null,
+            "current_queue_item_id": sent_current_qid,
+            "next_queue_item_id": sent_next_qid,
             "queue_version": {
                 "major": queue_version.major,
                 "minor": queue_version.minor
@@ -1980,8 +2066,9 @@ pub async fn v2_qconnect_report_playback_state(
             requested_next_queue_item_id: requested_next_qid,
             resolved_current_queue_item_id: resolved_current_qid,
             resolved_next_queue_item_id: resolved_next_qid,
-            sent_current_queue_item_id: None,
-            sent_next_queue_item_id: None,
+            sent_current_queue_item_id: sent_current_qid,
+            sent_next_queue_item_id: sent_next_qid,
+            report_queue_item_ids: should_report_queue_item_ids,
             current_track_id,
             playing_state,
             current_position,
@@ -2265,10 +2352,12 @@ fn decode_hex_channel(raw: &str) -> Result<Vec<u8>, String> {
 mod tests {
     use super::{
         decode_hex_channel, normalize_volume_to_fraction, parse_subscribe_channels,
+        resolve_queue_item_ids_from_queue_state,
         should_skip_renderer_report_due_to_stale_snapshot, QconnectHandoffIntent,
         QconnectOutboundCommandType, QconnectTrackOrigin,
     };
-    use qconnect_app::{resolve_handoff_intent, QueueCommandType};
+    use qconnect_app::{resolve_handoff_intent, QConnectQueueState, QueueCommandType};
+    use serde_json::json;
 
     #[test]
     fn decodes_hex_channels() {
@@ -2372,5 +2461,53 @@ mod tests {
             Some(42),
             Some(193849747),
         ));
+    }
+
+    #[test]
+    fn resolves_current_and_next_queue_item_ids_from_queue_order() {
+        let queue: QConnectQueueState = serde_json::from_value(json!({
+            "version": { "major": 4, "minor": 1 },
+            "queue_items": [
+                { "track_context_uuid": "ctx", "track_id": 59952963, "queue_item_id": 59952963 },
+                { "track_context_uuid": "ctx", "track_id": 57608710, "queue_item_id": 1 },
+                { "track_context_uuid": "ctx", "track_id": 2013968, "queue_item_id": 2 }
+            ],
+            "shuffle_mode": false,
+            "shuffle_order": null,
+            "autoplay_mode": false,
+            "autoplay_loading": false,
+            "autoplay_items": [],
+            "updated_at_ms": 0
+        }))
+        .expect("queue state");
+
+        assert_eq!(
+            resolve_queue_item_ids_from_queue_state(&queue, 57608710),
+            (Some(1), Some(2), Some(2013968)),
+        );
+    }
+
+    #[test]
+    fn resolves_next_queue_item_id_from_shuffle_order() {
+        let queue: QConnectQueueState = serde_json::from_value(json!({
+            "version": { "major": 4, "minor": 1 },
+            "queue_items": [
+                { "track_context_uuid": "ctx", "track_id": 10, "queue_item_id": 100 },
+                { "track_context_uuid": "ctx", "track_id": 20, "queue_item_id": 200 },
+                { "track_context_uuid": "ctx", "track_id": 30, "queue_item_id": 300 }
+            ],
+            "shuffle_mode": true,
+            "shuffle_order": [2, 0, 1],
+            "autoplay_mode": false,
+            "autoplay_loading": false,
+            "autoplay_items": [],
+            "updated_at_ms": 0
+        }))
+        .expect("queue state");
+
+        assert_eq!(
+            resolve_queue_item_ids_from_queue_state(&queue, 10),
+            (Some(100), Some(200), Some(20)),
+        );
     }
 }
