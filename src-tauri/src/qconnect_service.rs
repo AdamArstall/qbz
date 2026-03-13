@@ -1935,31 +1935,32 @@ pub async fn v2_qconnect_report_playback_state(
     let mut resolved_next_qid = resolved_next_qid;
 
     // Prefer a fresh queue lookup whenever the local track differs from the
-    // cached renderer snapshot, or when the caller explicitly wants queue IDs
-    // for a real track transition.
+    // cached renderer snapshot, or when the queue-derived cursor diverges
+    // from the stale renderer cursor after a queue mutation (insert/reorder).
+    let mut queue_lookup_report_strategy: Option<&'static str> = None;
     if let Some(track_id) = current_track_id_u64 {
-        let should_refresh_from_queue = requested_current_qid.is_none()
-            && (
-                resolved_current_qid.is_none()
-                    || renderer_current_track_id != Some(track_id)
-            );
+        let (queue_current_qid, queue_next_qid) = service
+            .resolve_queue_item_ids_by_track_id(track_id)
+            .await;
+        let queue_current_qid_i32 = queue_current_qid.and_then(|qid| i32::try_from(qid).ok());
+        let queue_next_qid_i32 = queue_next_qid.and_then(|next_qid| i32::try_from(next_qid).ok());
 
-        if should_refresh_from_queue {
-            let (queue_current_qid, queue_next_qid) = service
-                .resolve_queue_item_ids_by_track_id(track_id)
-                .await;
+        queue_lookup_report_strategy = determine_queue_lookup_report_strategy(
+            requested_current_qid,
+            Some(track_id),
+            renderer_current_track_id,
+            resolved_current_qid,
+            resolved_next_qid,
+            queue_current_qid_i32,
+            queue_next_qid_i32,
+        );
 
-            if let Some(qid) = queue_current_qid.and_then(|qid| i32::try_from(qid).ok()) {
-                resolved_current_qid = Some(qid);
-                if requested_next_qid.is_none() {
-                    resolved_next_qid = queue_next_qid.and_then(|next_qid| i32::try_from(next_qid).ok());
-                }
-                resolution_strategy = if renderer_current_track_id == Some(track_id) {
-                    "queue_lookup_confirmed".to_string()
-                } else {
-                    "queue_lookup_track_transition".to_string()
-                };
+        if let Some(strategy) = queue_lookup_report_strategy {
+            resolved_current_qid = queue_current_qid_i32;
+            if requested_next_qid.is_none() {
+                resolved_next_qid = queue_next_qid_i32;
             }
+            resolution_strategy = strategy.to_string();
         }
     }
 
@@ -1969,10 +1970,7 @@ pub async fn v2_qconnect_report_playback_state(
 
     let queue_version = service.get_queue_version().await;
     let should_report_queue_item_ids = requested_current_qid.is_some()
-        || matches!(
-            (current_track_id_u64, resolved_current_qid),
-            (Some(track_id), Some(_)) if renderer_current_track_id != Some(track_id)
-        );
+        || queue_lookup_report_strategy.is_some();
 
     let should_skip_due_to_stale_renderer =
         should_skip_renderer_report_due_to_stale_snapshot(
@@ -2114,6 +2112,37 @@ fn should_skip_renderer_report_due_to_stale_snapshot(
     };
 
     renderer_track_id != local_track_id as u64
+}
+
+fn determine_queue_lookup_report_strategy(
+    requested_current_qid: Option<i32>,
+    current_track_id: Option<u64>,
+    renderer_current_track_id: Option<u64>,
+    renderer_current_qid: Option<i32>,
+    renderer_next_qid: Option<i32>,
+    queue_current_qid: Option<i32>,
+    queue_next_qid: Option<i32>,
+) -> Option<&'static str> {
+    if requested_current_qid.is_some() {
+        return None;
+    }
+
+    let Some(track_id) = current_track_id else {
+        return None;
+    };
+    let Some(queue_current_qid) = queue_current_qid else {
+        return None;
+    };
+
+    if renderer_current_track_id != Some(track_id) {
+        return Some("queue_lookup_track_transition");
+    }
+
+    if renderer_current_qid != Some(queue_current_qid) || renderer_next_qid != queue_next_qid {
+        return Some("queue_lookup_queue_drift");
+    }
+
+    None
 }
 
 /// Report volume change to QConnect server.
@@ -2351,7 +2380,8 @@ fn decode_hex_channel(raw: &str) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_hex_channel, normalize_volume_to_fraction, parse_subscribe_channels,
+        decode_hex_channel, determine_queue_lookup_report_strategy,
+        normalize_volume_to_fraction, parse_subscribe_channels,
         resolve_queue_item_ids_from_queue_state,
         should_skip_renderer_report_due_to_stale_snapshot, QconnectHandoffIntent,
         QconnectOutboundCommandType, QconnectTrackOrigin,
@@ -2461,6 +2491,54 @@ mod tests {
             Some(42),
             Some(193849747),
         ));
+    }
+
+    #[test]
+    fn detects_queue_lookup_track_transition() {
+        assert_eq!(
+            determine_queue_lookup_report_strategy(
+                None,
+                Some(57608710),
+                Some(59952963),
+                Some(59952963_i32),
+                Some(1),
+                Some(1),
+                Some(2),
+            ),
+            Some("queue_lookup_track_transition"),
+        );
+    }
+
+    #[test]
+    fn detects_queue_lookup_queue_drift_when_next_item_changes() {
+        assert_eq!(
+            determine_queue_lookup_report_strategy(
+                None,
+                Some(123452387),
+                Some(123452387),
+                Some(123452387_i32),
+                Some(1),
+                Some(123452387_i32),
+                Some(12),
+            ),
+            Some("queue_lookup_queue_drift"),
+        );
+    }
+
+    #[test]
+    fn does_not_force_queue_lookup_when_renderer_snapshot_matches_queue() {
+        assert_eq!(
+            determine_queue_lookup_report_strategy(
+                None,
+                Some(123452387),
+                Some(123452387),
+                Some(123452387_i32),
+                Some(1),
+                Some(123452387_i32),
+                Some(1),
+            ),
+            None,
+        );
     }
 
     #[test]
