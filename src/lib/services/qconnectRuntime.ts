@@ -187,7 +187,7 @@ export function isQconnectPeerRendererActive(
   const activeRendererId = sessionSnapshot?.active_renderer_id ?? null;
   const localRendererId = sessionSnapshot?.local_renderer_id ?? null;
 
-  if (activeRendererId == null || localRendererId == null) {
+  if (activeRendererId == null || localRendererId == null || activeRendererId < 0) {
     return false;
   }
 

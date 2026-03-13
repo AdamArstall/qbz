@@ -28,6 +28,7 @@ qbz-cache = { path = "../crates/qbz-cache" }
 qbz-library = { path = "../crates/qbz-library" }
 qbz-cast = { path = "../crates/qbz-cast" }
 qconnect-app = { path = "../crates/qconnect-app" }
+qconnect-core = { path = "../crates/qconnect-core" }
 qconnect-transport-ws = { path = "../crates/qconnect-transport-ws" }
 
 # Tauri
@@ -157,4 +158,3 @@ tauri-plugin-dialog = { version = "2.6.0" }
 
 [dev-dependencies]
 tempfile = "3"
-

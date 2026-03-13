@@ -321,6 +321,7 @@
     evaluateQconnectPlaybackReportSkip,
     evaluateQconnectSessionPersistence,
     fetchQconnectRuntimeState,
+    isQconnectPeerRendererActive,
     isQconnectRemoteModeActive as computeQconnectRemoteModeActive,
     logQconnectPlaybackReport as appendQconnectPlaybackReport,
     qconnectAdmissionReasonKey,
@@ -907,6 +908,30 @@
   let infinitePlayEnabled = $state(false);
   let sessionPersistEnabled = $state(false);
   let radioLoading = $state(false);
+  let qconnectRemoteClockMs = $state(Date.now());
+
+  const qconnectPeerRendererActive = $derived(
+    isQconnectPeerRendererActive(qobuzConnectSessionSnapshot)
+  );
+  const effectiveIsPlaying = $derived(
+    qconnectPeerRendererActive
+      ? qobuzConnectRendererSnapshot?.playing_state === 2
+      : isPlaying
+  );
+  const effectiveCurrentTime = $derived(
+    qconnectPeerRendererActive
+      ? (() => {
+          const remotePositionMs = Math.max(0, qobuzConnectRendererSnapshot?.current_position_ms ?? 0);
+          const remoteUpdatedAtMs = qobuzConnectRendererSnapshot?.updated_at_ms ?? 0;
+          const extrapolatedMs =
+            effectiveIsPlaying && remoteUpdatedAtMs > 0
+              ? remotePositionMs + Math.max(0, qconnectRemoteClockMs - remoteUpdatedAtMs)
+              : remotePositionMs;
+          const maxDurationMs = Math.max(0, duration * 1000);
+          return (maxDurationMs > 0 ? Math.min(extrapolatedMs, maxDurationMs) : extrapolatedMs) / 1000;
+        })()
+      : currentTime
+  );
 
   // Toast State (from store subscription)
   let toast = $state<ToastData | null>(null);
@@ -1082,6 +1107,21 @@
     openQconnectPanel();
     void refreshQobuzConnectRuntimeState();
   }
+
+  $effect(() => {
+    if (!qconnectPeerRendererActive || !effectiveIsPlaying) {
+      return;
+    }
+
+    qconnectRemoteClockMs = Date.now();
+    const intervalId = window.setInterval(() => {
+      qconnectRemoteClockMs = Date.now();
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  });
 
   // Navigation wrapper (keeps debug logging)
   async function navigateTo(view: string, itemId?: string | number) {
@@ -3605,7 +3645,7 @@
     // Periodic QConnect position reports (every 2s) so controllers see track progress.
     // Only fires when connected and playing. queue_item_ids auto-filled by backend.
     const qconnectPositionReportInterval = setInterval(() => {
-      if (isQobuzConnectConnected && isPlaying && currentTrack) {
+      if (isQobuzConnectConnected && !qconnectPeerRendererActive && isPlaying && currentTrack) {
         if (shouldSkipQconnectPlaybackReport(currentTrack?.id ?? null)) {
           return;
         }
@@ -3907,7 +3947,7 @@
       // QConnect renderer state relay: report state transitions to server.
       // QConnect protocol uses milliseconds for position/duration.
       // queue_item_ids are auto-filled by the backend from renderer state.
-      if (isQobuzConnectConnected) {
+      if (isQobuzConnectConnected && !qconnectPeerRendererActive) {
         const playingState = isPlaying ? 2 : (currentTrack ? 3 : 1);
         const positionMs = Math.round((currentTime || 0) * 1000);
         const durationMs = Math.round((playerState.duration || 0) * 1000);
@@ -4296,6 +4336,16 @@
             'PendingActionCompleted' in payload;
           if (needsQueueSync) {
             syncQueueState();
+          }
+
+          const needsQconnectSnapshotRefresh =
+            'QueueUpdated' in payload ||
+            'RendererUpdated' in payload ||
+            'RendererCommandApplied' in payload ||
+            'PendingActionCompleted' in payload ||
+            'SessionManagementEvent' in payload;
+          if (needsQconnectSnapshotRefresh) {
+            void refreshQobuzConnectRuntimeState();
           }
         }
       });
@@ -5256,11 +5306,11 @@
         originalBitDepth={currentTrack.originalBitDepth}
         originalSamplingRate={currentTrack.originalSamplingRate}
         format={currentTrack.format}
-        {isPlaying}
+        isPlaying={effectiveIsPlaying}
         onTogglePlay={togglePlay}
         onSkipBack={handleSkipBack}
         onSkipForward={handleSkipForward}
-        {currentTime}
+        currentTime={effectiveCurrentTime}
         {duration}
         onSeek={handleSeek}
         {volume}
@@ -5349,11 +5399,11 @@
         originalBitDepth={currentTrack.originalBitDepth}
         originalSamplingRate={currentTrack.originalSamplingRate}
         format={currentTrack.format}
-        {isPlaying}
+        isPlaying={effectiveIsPlaying}
         onTogglePlay={togglePlay}
         onSkipBack={handleSkipBack}
         onSkipForward={handleSkipForward}
-        {currentTime}
+        currentTime={effectiveCurrentTime}
         {duration}
         onSeek={handleSeek}
         {volume}

@@ -6,6 +6,7 @@ use std::{
 
 use async_trait::async_trait;
 use qbz_models::{Quality, QueueTrack, Track};
+use qconnect_core::QueueItem;
 use qconnect_app::{
     evaluate_remote_queue_admission, resolve_handoff_intent, HandoffIntent, QConnectQueueState,
     QConnectRendererState, QconnectApp, QconnectAppEvent, QconnectEventSink, QueueCommandType,
@@ -315,6 +316,21 @@ struct QconnectRemoteSyncState {
     last_applied_queue_version: Option<(u64, u64)>,
     /// Session topology — stored from session management events (types 81-87).
     session: QconnectSessionState,
+    session_renderer_states: HashMap<i32, QconnectSessionRendererState>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct QconnectSessionRendererState {
+    active: Option<bool>,
+    playing_state: Option<i32>,
+    current_position_ms: Option<u64>,
+    current_queue_item_id: Option<u64>,
+    volume: Option<i32>,
+    muted: Option<bool>,
+    max_audio_quality: Option<i32>,
+    loop_mode: Option<i32>,
+    shuffle_mode: Option<bool>,
+    updated_at_ms: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -355,6 +371,13 @@ fn emit_qconnect_diagnostic(app_handle: &AppHandle, channel: &str, level: &str, 
     ) {
         log::warn!("[QConnect] Failed to emit diagnostic {channel}: {err}");
     }
+}
+
+fn qconnect_now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -434,6 +457,45 @@ fn refresh_local_renderer_id(session: &mut QconnectSessionState) {
     session.local_renderer_id = None;
 }
 
+fn normalize_active_renderer_id(value: Option<i64>) -> Option<i32> {
+    value
+        .filter(|renderer_id| *renderer_id >= 0)
+        .and_then(|renderer_id| i32::try_from(renderer_id).ok())
+}
+
+fn is_peer_renderer_active(session: &QconnectSessionState) -> bool {
+    match (session.active_renderer_id, session.local_renderer_id) {
+        (Some(active_renderer_id), Some(local_renderer_id)) => active_renderer_id != local_renderer_id,
+        _ => false,
+    }
+}
+
+fn sync_session_renderer_active_flags(state: &mut QconnectRemoteSyncState) {
+    for (renderer_id, renderer_state) in &mut state.session_renderer_states {
+        renderer_state.active = state
+            .session
+            .active_renderer_id
+            .map(|active_renderer_id| active_renderer_id == *renderer_id);
+    }
+}
+
+fn ensure_session_renderer_state(
+    state: &mut QconnectRemoteSyncState,
+    renderer_id: i32,
+) -> &mut QconnectSessionRendererState {
+    let active = state
+        .session
+        .active_renderer_id
+        .map(|active_renderer_id| active_renderer_id == renderer_id);
+    state
+        .session_renderer_states
+        .entry(renderer_id)
+        .or_insert_with(|| QconnectSessionRendererState {
+            active,
+            ..Default::default()
+        })
+}
+
 fn find_unique_renderer_id(
     session: &QconnectSessionState,
     predicate: impl Fn(&QconnectRendererInfo) -> bool,
@@ -450,6 +512,49 @@ fn find_unique_renderer_id(
     }
 
     Some(first)
+}
+
+fn queue_item_snapshot_for_cursor(
+    queue: &QConnectQueueState,
+    cursor: QconnectOrderedQueueCursor,
+) -> Option<QueueItem> {
+    match cursor {
+        QconnectOrderedQueueCursor::Queue(index) => queue.queue_items.get(index).cloned().map(|mut item| {
+            item.queue_item_id = normalize_current_queue_item_id_from_queue_state(queue, index);
+            item
+        }),
+        QconnectOrderedQueueCursor::Autoplay(index) => queue.autoplay_items.get(index).cloned(),
+    }
+}
+
+fn build_session_renderer_snapshot(
+    queue: &QConnectQueueState,
+    renderer_state: Option<&QconnectSessionRendererState>,
+) -> QConnectRendererState {
+    let renderer_state = renderer_state.cloned().unwrap_or_default();
+    let cursors = ordered_queue_cursors(queue);
+    let current_index =
+        find_cursor_index_by_queue_item_id(&cursors, queue, renderer_state.current_queue_item_id);
+    let current_track = current_index
+        .and_then(|index| queue_item_snapshot_for_cursor(queue, cursors[index]));
+    let next_track = current_index
+        .and_then(|index| cursors.get(index + 1).copied())
+        .and_then(|cursor| queue_item_snapshot_for_cursor(queue, cursor));
+
+    QConnectRendererState {
+        active: renderer_state.active,
+        playing_state: renderer_state.playing_state,
+        current_position_ms: renderer_state.current_position_ms,
+        current_track,
+        next_track,
+        volume: renderer_state.volume,
+        volume_delta: None,
+        muted: renderer_state.muted,
+        max_audio_quality: renderer_state.max_audio_quality,
+        loop_mode: renderer_state.loop_mode,
+        shuffle_mode: renderer_state.shuffle_mode,
+        updated_at_ms: renderer_state.updated_at_ms,
+    }
 }
 
 #[async_trait]
@@ -535,9 +640,9 @@ impl TauriQconnectEventSink {
                 if let Some(uuid) = payload.get("session_uuid").and_then(Value::as_str) {
                     state.session.session_uuid = Some(uuid.to_string());
                 }
-                if let Some(id) = payload.get("active_renderer_id").and_then(Value::as_i64) {
-                    state.session.active_renderer_id = Some(id as i32);
-                }
+                state.session.active_renderer_id =
+                    normalize_active_renderer_id(payload.get("active_renderer_id").and_then(Value::as_i64));
+                sync_session_renderer_active_flags(&mut state);
             }
             "MESSAGE_TYPE_SRVR_CTRL_ADD_RENDERER" => {
                 if let Some(renderer_id) = payload.get("renderer_id").and_then(Value::as_i64) {
@@ -575,6 +680,8 @@ impl TauriQconnectEventSink {
                         });
                         refresh_local_renderer_id(&mut state.session);
                     }
+                    let _ = ensure_session_renderer_state(&mut state, renderer_id);
+                    sync_session_renderer_active_flags(&mut state);
                 }
             }
             "MESSAGE_TYPE_SRVR_CTRL_UPDATE_RENDERER" => {
@@ -619,6 +726,8 @@ impl TauriQconnectEventSink {
                         }
                         refresh_local_renderer_id(&mut state.session);
                     }
+                    let _ = ensure_session_renderer_state(&mut state, renderer_id);
+                    sync_session_renderer_active_flags(&mut state);
                 }
             }
             "MESSAGE_TYPE_SRVR_CTRL_REMOVE_RENDERER" => {
@@ -628,16 +737,107 @@ impl TauriQconnectEventSink {
                         .session
                         .renderers
                         .retain(|r| r.renderer_id != renderer_id);
+                    state.session_renderer_states.remove(&renderer_id);
                     refresh_local_renderer_id(&mut state.session);
+                    sync_session_renderer_active_flags(&mut state);
                 }
             }
             "MESSAGE_TYPE_SRVR_CTRL_ACTIVE_RENDERER_CHANGED" => {
-                if let Some(id) = payload
-                    .get("active_renderer_id")
+                state.session.active_renderer_id =
+                    normalize_active_renderer_id(payload.get("active_renderer_id").and_then(Value::as_i64));
+                sync_session_renderer_active_flags(&mut state);
+            }
+            "MESSAGE_TYPE_SRVR_CTRL_RENDERER_STATE_UPDATED" => {
+                let Some(renderer_id) = payload.get("renderer_id").and_then(Value::as_i64) else {
+                    return;
+                };
+                let player_state = payload.get("player_state");
+                let renderer_state = ensure_session_renderer_state(&mut state, renderer_id as i32);
+
+                if let Some(playing_state) = player_state
+                    .and_then(|value| value.get("playing_state"))
+                    .and_then(Value::as_i64)
+                    .and_then(|value| i32::try_from(value).ok())
+                {
+                    renderer_state.playing_state = Some(playing_state);
+                }
+
+                if let Some(current_position_ms) = player_state
+                    .and_then(|value| value.get("current_position"))
+                    .and_then(Value::as_i64)
+                    .and_then(|value| u64::try_from(value).ok())
+                {
+                    renderer_state.current_position_ms = Some(current_position_ms);
+                }
+
+                if let Some(current_queue_item_id) = player_state
+                    .and_then(|value| value.get("current_queue_item_id"))
                     .and_then(Value::as_i64)
                 {
-                    state.session.active_renderer_id = Some(id as i32);
+                    renderer_state.current_queue_item_id = u64::try_from(current_queue_item_id).ok();
                 }
+
+                renderer_state.updated_at_ms = qconnect_now_ms();
+            }
+            "MESSAGE_TYPE_SRVR_CTRL_VOLUME_CHANGED" => {
+                let Some(renderer_id) = payload.get("renderer_id").and_then(Value::as_i64) else {
+                    return;
+                };
+                let Some(volume) = payload
+                    .get("volume")
+                    .and_then(Value::as_i64)
+                    .and_then(|value| i32::try_from(value).ok())
+                else {
+                    return;
+                };
+
+                let renderer_state = ensure_session_renderer_state(&mut state, renderer_id as i32);
+                renderer_state.volume = Some(volume);
+                renderer_state.updated_at_ms = qconnect_now_ms();
+            }
+            "MESSAGE_TYPE_SRVR_CTRL_VOLUME_MUTED" => {
+                let Some(renderer_id) = payload.get("renderer_id").and_then(Value::as_i64) else {
+                    return;
+                };
+                let Some(muted) = payload.get("value").and_then(Value::as_bool) else {
+                    return;
+                };
+
+                let renderer_state = ensure_session_renderer_state(&mut state, renderer_id as i32);
+                renderer_state.muted = Some(muted);
+                renderer_state.updated_at_ms = qconnect_now_ms();
+            }
+            "MESSAGE_TYPE_SRVR_CTRL_MAX_AUDIO_QUALITY_CHANGED" => {
+                let Some(renderer_id) = payload.get("renderer_id").and_then(Value::as_i64) else {
+                    return;
+                };
+                let Some(max_audio_quality) = payload
+                    .get("max_audio_quality")
+                    .and_then(Value::as_i64)
+                    .and_then(|value| i32::try_from(value).ok())
+                else {
+                    return;
+                };
+
+                let renderer_state = ensure_session_renderer_state(&mut state, renderer_id as i32);
+                renderer_state.max_audio_quality = Some(max_audio_quality);
+                renderer_state.updated_at_ms = qconnect_now_ms();
+            }
+            "MESSAGE_TYPE_SRVR_CTRL_LOOP_MODE_SET" => {
+                let Some(loop_mode) = payload
+                    .get("loop_mode")
+                    .and_then(Value::as_i64)
+                    .and_then(|value| i32::try_from(value).ok())
+                else {
+                    return;
+                };
+                let Some(active_renderer_id) = state.session.active_renderer_id else {
+                    return;
+                };
+
+                let renderer_state = ensure_session_renderer_state(&mut state, active_renderer_id);
+                renderer_state.loop_mode = Some(loop_mode);
+                renderer_state.updated_at_ms = qconnect_now_ms();
             }
             _ => {}
         }
@@ -884,6 +1084,10 @@ impl QconnectServiceState {
     }
 
     pub async fn renderer_snapshot(&self) -> Result<QConnectRendererState, String> {
+        if let Some((renderer_snapshot, _, _)) = self.effective_remote_renderer_snapshot().await? {
+            return Ok(renderer_snapshot);
+        }
+
         let app = {
             let guard = self.inner.lock().await;
             guard
@@ -908,6 +1112,90 @@ impl QconnectServiceState {
 
         let state = sync_state.lock().await;
         Ok(state.session.clone())
+    }
+
+    async fn effective_remote_renderer_snapshot(
+        &self,
+    ) -> Result<Option<(QConnectRendererState, QConnectQueueState, QconnectSessionState)>, String> {
+        let (app, sync_state) = {
+            let guard = self.inner.lock().await;
+            let Some(runtime) = guard.runtime.as_ref() else {
+                return Ok(None);
+            };
+            (Arc::clone(&runtime.app), Arc::clone(&runtime.sync_state))
+        };
+
+        let queue = app.queue_state_snapshot().await;
+        let state = sync_state.lock().await;
+        let session = state.session.clone();
+        if !is_peer_renderer_active(&session) {
+            return Ok(None);
+        }
+
+        let Some(active_renderer_id) = session.active_renderer_id else {
+            return Ok(None);
+        };
+
+        let renderer_state = state
+            .session_renderer_states
+            .get(&active_renderer_id)
+            .cloned()
+            .unwrap_or(QconnectSessionRendererState {
+                active: Some(true),
+                ..Default::default()
+            });
+        let renderer = build_session_renderer_snapshot(&queue, Some(&renderer_state));
+
+        Ok(Some((renderer, queue, session)))
+    }
+
+    async fn prime_remote_renderer_state(
+        &self,
+        queue_item_id: u64,
+        playing_state: Option<i32>,
+        current_position_ms: Option<u64>,
+    ) {
+        let guard = self.inner.lock().await;
+        let Some(runtime) = guard.runtime.as_ref() else {
+            return;
+        };
+
+        let mut sync_state = runtime.sync_state.lock().await;
+        let Some(active_renderer_id) = sync_state.session.active_renderer_id else {
+            return;
+        };
+        if sync_state.session.local_renderer_id == Some(active_renderer_id) {
+            return;
+        }
+
+        let renderer_state = ensure_session_renderer_state(&mut sync_state, active_renderer_id);
+        renderer_state.current_queue_item_id = Some(queue_item_id);
+        if let Some(playing_state) = playing_state {
+            renderer_state.playing_state = Some(playing_state);
+        }
+        if let Some(current_position_ms) = current_position_ms {
+            renderer_state.current_position_ms = Some(current_position_ms);
+        }
+        renderer_state.updated_at_ms = qconnect_now_ms();
+    }
+
+    async fn prime_remote_renderer_playing_state(&self, playing_state: i32) {
+        let guard = self.inner.lock().await;
+        let Some(runtime) = guard.runtime.as_ref() else {
+            return;
+        };
+
+        let mut sync_state = runtime.sync_state.lock().await;
+        let Some(active_renderer_id) = sync_state.session.active_renderer_id else {
+            return;
+        };
+        if sync_state.session.local_renderer_id == Some(active_renderer_id) {
+            return;
+        }
+
+        let renderer_state = ensure_session_renderer_state(&mut sync_state, active_renderer_id);
+        renderer_state.playing_state = Some(playing_state);
+        renderer_state.updated_at_ms = qconnect_now_ms();
     }
 
     pub async fn send_renderer_report(
@@ -1068,28 +1356,29 @@ impl QconnectServiceState {
         direction: QconnectRemoteSkipDirection,
         app_handle: &AppHandle,
     ) -> Result<bool, String> {
-        let (app, session) = {
-            let guard = self.inner.lock().await;
-            let Some(runtime) = guard.runtime.as_ref() else {
-                return Ok(false);
+        let remote_context = self.effective_remote_renderer_snapshot().await?;
+        let Some((renderer, queue, session)) = remote_context else {
+            let (active_renderer_id, local_renderer_id, renderer_count, reason) = {
+                let guard = self.inner.lock().await;
+                let Some(runtime) = guard.runtime.as_ref() else {
+                    return Ok(false);
+                };
+                let session = runtime.sync_state.lock().await.session.clone();
+                let reason = if session.active_renderer_id.is_none() {
+                    "missing_active_renderer_id"
+                } else if session.local_renderer_id.is_none() {
+                    "missing_local_renderer_id"
+                } else {
+                    "active_renderer_is_local"
+                };
+                (
+                    session.active_renderer_id,
+                    session.local_renderer_id,
+                    session.renderers.len(),
+                    reason,
+                )
             };
-            let session = runtime.sync_state.lock().await.session.clone();
-            (Arc::clone(&runtime.app), session)
-        };
 
-        let active_renderer_id = session.active_renderer_id;
-        let local_renderer_id = session.local_renderer_id;
-        let early_return_reason = if active_renderer_id.is_none() {
-            Some("missing_active_renderer_id")
-        } else if local_renderer_id.is_none() {
-            Some("missing_local_renderer_id")
-        } else if active_renderer_id == local_renderer_id {
-            Some("active_renderer_is_local")
-        } else {
-            None
-        };
-
-        if let Some(reason) = early_return_reason {
             emit_qconnect_diagnostic(
                 app_handle,
                 "qconnect:controller_skip_handoff",
@@ -1102,14 +1391,14 @@ impl QconnectServiceState {
                     "reason": reason,
                     "active_renderer_id": active_renderer_id,
                     "local_renderer_id": local_renderer_id,
-                    "renderer_count": session.renderers.len(),
+                    "renderer_count": renderer_count,
                 }),
             );
             return Ok(false);
-        }
+        };
 
-        let queue = app.queue_state_snapshot().await;
-        let renderer = app.renderer_state_snapshot().await;
+        let active_renderer_id = session.active_renderer_id;
+        let local_renderer_id = session.local_renderer_id;
         let resolution = resolve_controller_queue_item_from_snapshots(&queue, &renderer, direction);
 
         let diagnostic_payload = json!({
@@ -1165,6 +1454,12 @@ impl QconnectServiceState {
 
         self.send_command(QueueCommandType::CtrlSrvrSetPlayerState, payload)
             .await?;
+        self.prime_remote_renderer_state(
+            target_queue_item_id,
+            renderer.playing_state,
+            Some(0),
+        )
+        .await;
 
         emit_qconnect_diagnostic(
             app_handle,
@@ -1180,28 +1475,29 @@ impl QconnectServiceState {
         &self,
         app_handle: &AppHandle,
     ) -> Result<bool, String> {
-        let (app, session) = {
-            let guard = self.inner.lock().await;
-            let Some(runtime) = guard.runtime.as_ref() else {
-                return Ok(false);
+        let remote_context = self.effective_remote_renderer_snapshot().await?;
+        let Some((renderer, _, session)) = remote_context else {
+            let (active_renderer_id, local_renderer_id, renderer_count, reason) = {
+                let guard = self.inner.lock().await;
+                let Some(runtime) = guard.runtime.as_ref() else {
+                    return Ok(false);
+                };
+                let session = runtime.sync_state.lock().await.session.clone();
+                let reason = if session.active_renderer_id.is_none() {
+                    "missing_active_renderer_id"
+                } else if session.local_renderer_id.is_none() {
+                    "missing_local_renderer_id"
+                } else {
+                    "active_renderer_is_local"
+                };
+                (
+                    session.active_renderer_id,
+                    session.local_renderer_id,
+                    session.renderers.len(),
+                    reason,
+                )
             };
-            let session = runtime.sync_state.lock().await.session.clone();
-            (Arc::clone(&runtime.app), session)
-        };
 
-        let active_renderer_id = session.active_renderer_id;
-        let local_renderer_id = session.local_renderer_id;
-        let early_return_reason = if active_renderer_id.is_none() {
-            Some("missing_active_renderer_id")
-        } else if local_renderer_id.is_none() {
-            Some("missing_local_renderer_id")
-        } else if active_renderer_id == local_renderer_id {
-            Some("active_renderer_is_local")
-        } else {
-            None
-        };
-
-        if let Some(reason) = early_return_reason {
             emit_qconnect_diagnostic(
                 app_handle,
                 "qconnect:toggle_play_handoff",
@@ -1210,13 +1506,14 @@ impl QconnectServiceState {
                     "reason": reason,
                     "active_renderer_id": active_renderer_id,
                     "local_renderer_id": local_renderer_id,
-                    "renderer_count": session.renderers.len(),
+                    "renderer_count": renderer_count,
                 }),
             );
             return Ok(false);
-        }
+        };
 
-        let renderer = app.renderer_state_snapshot().await;
+        let active_renderer_id = session.active_renderer_id;
+        let local_renderer_id = session.local_renderer_id;
         let next_playing_state = match renderer.playing_state {
             Some(PLAYING_STATE_PLAYING) => PLAYING_STATE_PAUSED,
             _ => PLAYING_STATE_PLAYING,
@@ -1231,6 +1528,8 @@ impl QconnectServiceState {
 
         self.send_command(QueueCommandType::CtrlSrvrSetPlayerState, payload)
             .await?;
+        self.prime_remote_renderer_playing_state(next_playing_state)
+            .await;
 
         emit_qconnect_diagnostic(
             app_handle,
@@ -1320,6 +1619,12 @@ impl QconnectServiceState {
 
                 self.send_command(QueueCommandType::CtrlSrvrSetPlayerState, payload)
                     .await?;
+                self.prime_remote_renderer_state(
+                    target_queue_item_id,
+                    Some(PLAYING_STATE_PLAYING),
+                    Some(0),
+                )
+                .await;
 
                 emit_qconnect_diagnostic(
                     app_handle,
@@ -1350,7 +1655,11 @@ impl QconnectServiceState {
             tokio::time::sleep(poll_interval).await;
         };
 
-        let renderer = app.renderer_state_snapshot().await;
+        let renderer = self
+            .effective_remote_renderer_snapshot()
+            .await?
+            .map(|(renderer, _, _)| renderer)
+            .unwrap_or_else(QConnectRendererState::default);
         emit_qconnect_diagnostic(
             app_handle,
             "qconnect:play_track_handoff",
@@ -3527,6 +3836,47 @@ mod tests {
         assert_eq!(
             resolve_queue_item_ids_from_queue_state(&queue, 126886853),
             (Some(0), Some(10), Some(123452387)),
+        );
+    }
+
+    #[test]
+    fn builds_effective_remote_renderer_snapshot_from_session_cursor() {
+        let queue: QConnectQueueState = serde_json::from_value(json!({
+            "version": { "major": 4, "minor": 1 },
+            "queue_items": [
+                { "track_context_uuid": "ctx", "track_id": 126886862, "queue_item_id": 126886862 },
+                { "track_context_uuid": "ctx", "track_id": 25584418, "queue_item_id": 1 },
+                { "track_context_uuid": "ctx", "track_id": 25120807, "queue_item_id": 2 }
+            ],
+            "shuffle_mode": false,
+            "shuffle_order": null,
+            "autoplay_mode": false,
+            "autoplay_loading": false,
+            "autoplay_items": [],
+            "updated_at_ms": 0
+        }))
+        .expect("queue state");
+        let renderer_state = super::QconnectSessionRendererState {
+            active: Some(true),
+            playing_state: Some(super::PLAYING_STATE_PLAYING),
+            current_position_ms: Some(19_999),
+            current_queue_item_id: Some(0),
+            updated_at_ms: 12_345,
+            ..Default::default()
+        };
+
+        let snapshot = super::build_session_renderer_snapshot(&queue, Some(&renderer_state));
+
+        assert_eq!(snapshot.active, Some(true));
+        assert_eq!(snapshot.playing_state, Some(super::PLAYING_STATE_PLAYING));
+        assert_eq!(snapshot.current_position_ms, Some(19_999));
+        assert_eq!(
+            snapshot.current_track.as_ref().map(|item| (item.track_id, item.queue_item_id)),
+            Some((126886862, 0)),
+        );
+        assert_eq!(
+            snapshot.next_track.as_ref().map(|item| (item.track_id, item.queue_item_id)),
+            Some((25584418, 1)),
         );
     }
 
