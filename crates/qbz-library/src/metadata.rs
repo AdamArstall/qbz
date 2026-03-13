@@ -5,8 +5,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{AudioFormat, AudioProperties, LibraryError, LocalTrack};
 use crate::thumbnails::{generate_thumbnail, generate_thumbnail_from_bytes};
+use crate::{AudioFormat, AudioProperties, LibraryError, LocalTrack};
 
 /// Metadata extractor using lofty
 pub struct MetadataExtractor;
@@ -108,10 +108,18 @@ impl MetadataExtractor {
 
         // Must contain at least one disc-related token
         let has_disc_token = tokens.iter().any(|token| {
-            *token == "disc" || *token == "disk" || *token == "cd"
-                || (token.starts_with("disc") && token[4..].chars().all(|c| c.is_ascii_digit()) && !token[4..].is_empty())
-                || (token.starts_with("disk") && token[4..].chars().all(|c| c.is_ascii_digit()) && !token[4..].is_empty())
-                || (token.starts_with("cd") && token[2..].chars().all(|c| c.is_ascii_digit()) && !token[2..].is_empty())
+            *token == "disc"
+                || *token == "disk"
+                || *token == "cd"
+                || (token.starts_with("disc")
+                    && token[4..].chars().all(|c| c.is_ascii_digit())
+                    && !token[4..].is_empty())
+                || (token.starts_with("disk")
+                    && token[4..].chars().all(|c| c.is_ascii_digit())
+                    && !token[4..].is_empty())
+                || (token.starts_with("cd")
+                    && token[2..].chars().all(|c| c.is_ascii_digit())
+                    && !token[2..].is_empty())
         });
 
         if !has_disc_token {
@@ -215,7 +223,10 @@ impl MetadataExtractor {
             // Only when leading number is 1-2 digits (disc number) followed by dash+digits
             if digit_end <= 2 && rest.starts_with('-') {
                 let after_dash = &rest[1..];
-                let track_digits: String = after_dash.chars().take_while(|c| c.is_ascii_digit()).collect();
+                let track_digits: String = after_dash
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit())
+                    .collect();
                 if !track_digits.is_empty() {
                     if let Ok(n) = track_digits.parse::<u32>() {
                         if n > 0 && n < 10000 {
@@ -280,8 +291,18 @@ impl MetadataExtractor {
         if let Some(word) = first_word {
             if matches!(
                 word,
-                "flac" | "mp3" | "aac" | "alac" | "wav" | "aiff" | "ogg"
-                    | "dsd" | "opus" | "wma" | "ape" | "pcm"
+                "flac"
+                    | "mp3"
+                    | "aac"
+                    | "alac"
+                    | "wav"
+                    | "aiff"
+                    | "ogg"
+                    | "dsd"
+                    | "opus"
+                    | "wma"
+                    | "ape"
+                    | "pcm"
             ) {
                 return true;
             }
@@ -380,7 +401,9 @@ impl MetadataExtractor {
             .map_err(|e| LibraryError::Metadata(format!("Failed to read file: {}", e)))?;
 
         // Get the primary tag (prefer ID3v2/Vorbis/APE)
-        let tag = tagged_file.primary_tag().or_else(|| tagged_file.first_tag());
+        let tag = tagged_file
+            .primary_tag()
+            .or_else(|| tagged_file.first_tag());
 
         // Get audio properties
         let properties = tagged_file.properties();
@@ -424,10 +447,7 @@ impl MetadataExtractor {
             LocalTrack {
                 id: 0,
                 file_path: file_path.to_string_lossy().to_string(),
-                title: tag
-                    .title()
-                    .map(|s| s.to_string())
-                    .unwrap_or(filename),
+                title: tag.title().map(|s| s.to_string()).unwrap_or(filename),
                 artist: Self::normalize_field(tag.artist().as_deref())
                     .or_else(|| fallback_artist.clone())
                     .unwrap_or_else(|| "Unknown Artist".to_string()),
@@ -435,7 +455,9 @@ impl MetadataExtractor {
                 album_artist: tag.get_string(&ItemKey::AlbumArtist).map(|s| s.to_string()),
                 album_group_key,
                 album_group_title,
-                track_number: tag.track().map(|t| t as u32)
+                track_number: tag
+                    .track()
+                    .map(|t| t as u32)
                     .or_else(|| Self::infer_track_number_from_filename(file_path)),
                 disc_number: tag
                     .disk()
@@ -443,7 +465,9 @@ impl MetadataExtractor {
                     .or(inferred_disc),
                 year: tag.year().map(|y| y as u32),
                 genre: tag.genre().map(|s| s.to_string()),
-                catalog_number: tag.get_string(&ItemKey::CatalogNumber).map(|s| s.to_string()),
+                catalog_number: tag
+                    .get_string(&ItemKey::CatalogNumber)
+                    .map(|s| s.to_string()),
                 duration_secs,
                 format,
                 bit_depth,
@@ -474,8 +498,7 @@ impl MetadataExtractor {
                 id: 0,
                 file_path: file_path.to_string_lossy().to_string(),
                 title: filename,
-                artist: fallback_artist
-                    .unwrap_or_else(|| "Unknown Artist".to_string()),
+                artist: fallback_artist.unwrap_or_else(|| "Unknown Artist".to_string()),
                 album: album_title,
                 album_artist: None,
                 album_group_key,
@@ -546,7 +569,9 @@ impl MetadataExtractor {
     /// Extract and save artwork as thumbnail to cache directory
     pub fn extract_artwork(file_path: &Path, _cache_dir: &Path) -> Option<String> {
         let tagged_file = Probe::open(file_path).ok()?.read().ok()?;
-        let tag = tagged_file.primary_tag().or_else(|| tagged_file.first_tag())?;
+        let tag = tagged_file
+            .primary_tag()
+            .or_else(|| tagged_file.first_tag())?;
 
         let picture = tag.pictures().first()?;
 
@@ -645,11 +670,8 @@ impl MetadataExtractor {
                     }
                 };
 
-                let mut score = Self::artwork_score(
-                    &file_key,
-                    album_key.as_deref(),
-                    folder_key.as_deref(),
-                );
+                let mut score =
+                    Self::artwork_score(&file_key, album_key.as_deref(), folder_key.as_deref());
                 if score == 0 {
                     score = 5;
                 }
@@ -692,11 +714,7 @@ impl MetadataExtractor {
         matches!(ext, "jpg" | "jpeg" | "png" | "webp" | "gif" | "bmp")
     }
 
-    fn artwork_score(
-        file_key: &str,
-        album_key: Option<&str>,
-        folder_key: Option<&str>,
-    ) -> i32 {
+    fn artwork_score(file_key: &str, album_key: Option<&str>, folder_key: Option<&str>) -> i32 {
         const EXACT: &[&str] = &["cover", "folder", "front", "album", "artwork", "art"];
         let mut score = 0;
 
@@ -752,9 +770,15 @@ mod tests {
     #[test]
     fn test_is_encoding_folder() {
         // QBZ-generated quality folder names
-        assert!(MetadataExtractor::is_encoding_folder("FLAC 16-bit - 44.1 kHz"));
-        assert!(MetadataExtractor::is_encoding_folder("FLAC 24-bit - 96 kHz"));
-        assert!(MetadataExtractor::is_encoding_folder("FLAC 24-bit - 192 kHz"));
+        assert!(MetadataExtractor::is_encoding_folder(
+            "FLAC 16-bit - 44.1 kHz"
+        ));
+        assert!(MetadataExtractor::is_encoding_folder(
+            "FLAC 24-bit - 96 kHz"
+        ));
+        assert!(MetadataExtractor::is_encoding_folder(
+            "FLAC 24-bit - 192 kHz"
+        ));
         assert!(MetadataExtractor::is_encoding_folder("MP3 320 kbps"));
 
         // Common encoding folder names from other tools
@@ -792,7 +816,8 @@ mod tests {
     #[test]
     fn test_album_root_dir_encoding_folder() {
         // artist/album/quality/track.flac -> album/
-        let path = Path::new("/music/EELS/Beautiful Freak/FLAC 24-bit - 96 kHz/01 - Novocaine.flac");
+        let path =
+            Path::new("/music/EELS/Beautiful Freak/FLAC 24-bit - 96 kHz/01 - Novocaine.flac");
         let root = MetadataExtractor::album_root_dir(path).unwrap();
         assert_eq!(root, Path::new("/music/EELS/Beautiful Freak"));
     }
@@ -800,7 +825,9 @@ mod tests {
     #[test]
     fn test_album_root_dir_encoding_and_disc() {
         // artist/album/quality/disc1/track.flac -> album/
-        let path = Path::new("/music/EELS/Beautiful Freak/FLAC 24-bit - 96 kHz/Disc 1/01 - Novocaine.flac");
+        let path = Path::new(
+            "/music/EELS/Beautiful Freak/FLAC 24-bit - 96 kHz/Disc 1/01 - Novocaine.flac",
+        );
         let root = MetadataExtractor::album_root_dir(path).unwrap();
         assert_eq!(root, Path::new("/music/EELS/Beautiful Freak"));
     }
@@ -809,16 +836,22 @@ mod tests {
     fn test_infer_track_number_from_filename() {
         // Common patterns: "01 - Title"
         assert_eq!(
-            MetadataExtractor::infer_track_number_from_filename(Path::new("/music/01 - Novocaine.flac")),
+            MetadataExtractor::infer_track_number_from_filename(Path::new(
+                "/music/01 - Novocaine.flac"
+            )),
             Some(1)
         );
         assert_eq!(
-            MetadataExtractor::infer_track_number_from_filename(Path::new("/music/12 - Beautiful Freak.flac")),
+            MetadataExtractor::infer_track_number_from_filename(Path::new(
+                "/music/12 - Beautiful Freak.flac"
+            )),
             Some(12)
         );
         // "01. Title"
         assert_eq!(
-            MetadataExtractor::infer_track_number_from_filename(Path::new("/music/03. Song Name.flac")),
+            MetadataExtractor::infer_track_number_from_filename(Path::new(
+                "/music/03. Song Name.flac"
+            )),
             Some(3)
         );
         // "01_Title"
@@ -848,7 +881,9 @@ mod tests {
         );
         // Zero is not a valid track number
         assert_eq!(
-            MetadataExtractor::infer_track_number_from_filename(Path::new("/music/00 - Intro.flac")),
+            MetadataExtractor::infer_track_number_from_filename(Path::new(
+                "/music/00 - Intro.flac"
+            )),
             None
         );
     }
@@ -873,11 +908,17 @@ mod tests {
     #[test]
     fn test_is_disc_folder_false_album_names() {
         // Album names containing disc/cd keywords — NOT disc folders (issue #147)
-        assert!(!MetadataExtractor::is_disc_folder("100 Popular Classics, Disc 1"));
-        assert!(!MetadataExtractor::is_disc_folder("100 Popular Classics_ Best Loved Works of the Great Composers, Disc 1"));
+        assert!(!MetadataExtractor::is_disc_folder(
+            "100 Popular Classics, Disc 1"
+        ));
+        assert!(!MetadataExtractor::is_disc_folder(
+            "100 Popular Classics_ Best Loved Works of the Great Composers, Disc 1"
+        ));
         assert!(!MetadataExtractor::is_disc_folder("Relaxation Disc1"));
         assert!(!MetadataExtractor::is_disc_folder("Now 75 - CD1"));
-        assert!(!MetadataExtractor::is_disc_folder("Match of the Day - The Album CD1"));
+        assert!(!MetadataExtractor::is_disc_folder(
+            "Match of the Day - The Album CD1"
+        ));
         assert!(!MetadataExtractor::is_disc_folder("20 Blues Greats"));
         assert!(!MetadataExtractor::is_disc_folder("The Beatles"));
         assert!(!MetadataExtractor::is_disc_folder("Abbey Road"));
@@ -888,7 +929,10 @@ mod tests {
         // Issue #147: album names containing "Disc N" should NOT be treated as disc folders
         let path = Path::new("/music/Various Artists/100 Popular Classics, Disc 1/01 - Track.flac");
         let root = MetadataExtractor::album_root_dir(path).unwrap();
-        assert_eq!(root, Path::new("/music/Various Artists/100 Popular Classics, Disc 1"));
+        assert_eq!(
+            root,
+            Path::new("/music/Various Artists/100 Popular Classics, Disc 1")
+        );
 
         let path = Path::new("/music/Various Artists/Relaxation Disc1/01 - Track.flac");
         let root = MetadataExtractor::album_root_dir(path).unwrap();

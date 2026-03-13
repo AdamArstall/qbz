@@ -16,8 +16,8 @@ mod tapped_source;
 pub use ring_buffer::RingBuffer;
 pub use tapped_source::TappedSource;
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Arc;
 
 /// Number of frequency bins to send to frontend
 pub const NUM_BARS: usize = 16;

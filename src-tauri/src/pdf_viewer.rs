@@ -91,24 +91,23 @@ pub async fn v2_booklet_open(
 
     // Save to temp file
     let temp_dir = booklet_temp_dir();
-    std::fs::create_dir_all(&temp_dir)
-        .map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Failed to create temp dir: {}", e))?;
 
     let file_name = format!("{}.pdf", uuid::Uuid::new_v4());
     let temp_path = temp_dir.join(&file_name);
 
-    std::fs::write(&temp_path, &bytes)
-        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+    std::fs::write(&temp_path, &bytes).map_err(|e| format!("Failed to write temp file: {}", e))?;
 
     // Open with MuPDF and get page info (blocking operation)
     let path_str = temp_path.to_string_lossy().to_string();
     let info = tokio::task::spawn_blocking(move || -> Result<BookletInfo, String> {
-        let document = Document::open(&path_str)
-            .map_err(|e| format!("Failed to open PDF: {:?}", e))?;
+        let document =
+            Document::open(&path_str).map_err(|e| format!("Failed to open PDF: {:?}", e))?;
 
         let num_pages = document
             .page_count()
-            .map_err(|e| format!("Failed to get page count: {:?}", e))? as u32;
+            .map_err(|e| format!("Failed to get page count: {:?}", e))?
+            as u32;
 
         let mut page_sizes = Vec::with_capacity(num_pages as usize);
         for i in 0..num_pages {
@@ -170,8 +169,7 @@ pub async fn v2_booklet_render_page(
     let dpi = dpi.max(36).min(600); // Clamp DPI to sane range
 
     tokio::task::spawn_blocking(move || -> Result<RenderedPage, String> {
-        let document = Document::open(&path)
-            .map_err(|e| format!("Failed to open PDF: {:?}", e))?;
+        let document = Document::open(&path).map_err(|e| format!("Failed to open PDF: {:?}", e))?;
 
         let page_index = (page - 1) as i32;
         let pdf_page = document
@@ -196,9 +194,15 @@ pub async fn v2_booklet_render_page(
             let mut m = Matrix::new_scale(scale, scale);
             m.concat(Matrix::new_rotate(rotation as f32));
             match rotation % 360 {
-                90 => { m.concat(Matrix::new_translate(h, 0.0)); }
-                180 => { m.concat(Matrix::new_translate(w, h)); }
-                270 => { m.concat(Matrix::new_translate(0.0, w)); }
+                90 => {
+                    m.concat(Matrix::new_translate(h, 0.0));
+                }
+                180 => {
+                    m.concat(Matrix::new_translate(w, h));
+                }
+                270 => {
+                    m.concat(Matrix::new_translate(0.0, w));
+                }
                 _ => {}
             };
             m
@@ -246,17 +250,14 @@ pub async fn v2_booklet_save(
             .clone()
     };
 
-    std::fs::copy(&src, &dest)
-        .map_err(|e| format!("Failed to save booklet: {}", e))?;
+    std::fs::copy(&src, &dest).map_err(|e| format!("Failed to save booklet: {}", e))?;
 
     Ok(())
 }
 
 /// Clean up the current booklet temp file.
 #[tauri::command]
-pub async fn v2_booklet_close(
-    state: tauri::State<'_, BookletState>,
-) -> Result<(), String> {
+pub async fn v2_booklet_close(state: tauri::State<'_, BookletState>) -> Result<(), String> {
     let mut path_lock = state.current_path.lock().map_err(|e| e.to_string())?;
     if let Some(old_path) = path_lock.take() {
         let _ = std::fs::remove_file(&old_path);

@@ -5,6 +5,7 @@ import {
   evaluateQconnectSessionPersistence,
   isQconnectPeerRendererActive,
   isQconnectRemoteModeActive,
+  resolveQconnectPlayNextAuthoritativeTrackId,
   type QconnectConnectionStatus
 } from './qconnectRuntime';
 import type { QconnectQueueSnapshot, QconnectRendererSnapshot } from './qconnectRemoteQueue';
@@ -179,5 +180,42 @@ describe('QConnect runtime state helpers', () => {
         renderers: []
       })
     ).toBe(true);
+  });
+
+  it('does not trust the local current track for play next when a peer renderer is active', () => {
+    expect(
+      resolveQconnectPlayNextAuthoritativeTrackId({
+        sessionSnapshot: {
+          session_uuid: 'session-1',
+          active_renderer_id: 4,
+          local_renderer_id: 11,
+          renderers: []
+        },
+        localCurrentTrackId: 48425288
+      })
+    ).toBeNull();
+  });
+
+  it('keeps the local current track authoritative when the local renderer is active', () => {
+    expect(
+      resolveQconnectPlayNextAuthoritativeTrackId({
+        sessionSnapshot: {
+          session_uuid: 'session-1',
+          active_renderer_id: 11,
+          local_renderer_id: 11,
+          renderers: []
+        },
+        localCurrentTrackId: 48425288
+      })
+    ).toBe(48425288);
+  });
+
+  it('does not trust the local current track when the session snapshot is unavailable', () => {
+    expect(
+      resolveQconnectPlayNextAuthoritativeTrackId({
+        sessionSnapshot: null,
+        localCurrentTrackId: 48425288
+      })
+    ).toBeNull();
   });
 });

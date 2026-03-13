@@ -104,10 +104,13 @@ pub async fn activate_session(app: &tauri::AppHandle, user_id: u64) -> Result<()
     listenbrainz.init_at(&data_dir).await?;
 
     // Initialize V2 integration caches at user data directory
-    listenbrainz_v2.init_cache_at(&data_dir).await.map_err(|e| {
-        log::error!("[SessionLifecycle] LB V2 cache init failed: {}", e);
-        e
-    })?;
+    listenbrainz_v2
+        .init_cache_at(&data_dir)
+        .await
+        .map_err(|e| {
+            log::error!("[SessionLifecycle] LB V2 cache init failed: {}", e);
+            e
+        })?;
     musicbrainz_v2.init_cache_at(&data_dir).await.map_err(|e| {
         log::error!("[SessionLifecycle] MB V2 cache init failed: {}", e);
         e

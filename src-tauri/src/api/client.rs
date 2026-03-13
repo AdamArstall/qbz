@@ -187,9 +187,9 @@ impl QobuzClient {
         use reqwest::header::{HeaderMap, HeaderValue};
 
         let tokens = self.tokens.read().await;
-        let tokens = tokens.as_ref().ok_or_else(|| {
-            ApiError::BundleExtractionError("Client not initialized".to_string())
-        })?;
+        let tokens = tokens
+            .as_ref()
+            .ok_or_else(|| ApiError::BundleExtractionError("Client not initialized".to_string()))?;
         let app_id = tokens.app_id.clone();
         let private_key = tokens.private_key.clone().ok_or_else(|| {
             ApiError::BundleExtractionError(
@@ -248,9 +248,8 @@ impl QobuzClient {
         );
         auth_headers.insert(
             "X-User-Auth-Token",
-            HeaderValue::from_str(&token).map_err(|_| {
-                ApiError::AuthenticationError("Invalid OAuth token format".into())
-            })?,
+            HeaderValue::from_str(&token)
+                .map_err(|_| ApiError::AuthenticationError("Invalid OAuth token format".into()))?,
         );
 
         let login_resp = self
@@ -304,9 +303,8 @@ impl QobuzClient {
         );
         headers.insert(
             "X-User-Auth-Token",
-            HeaderValue::from_str(token).map_err(|_| {
-                ApiError::AuthenticationError("Invalid token format".into())
-            })?,
+            HeaderValue::from_str(token)
+                .map_err(|_| ApiError::AuthenticationError("Invalid token format".into()))?,
         );
 
         log::info!("[OAuth] Restoring session from saved token");
@@ -632,10 +630,7 @@ impl QobuzClient {
     }
 
     /// Get album suggestions (similar albums) from /album/suggest
-    pub async fn get_album_suggest(
-        &self,
-        album_id: &str,
-    ) -> Result<AlbumSuggestResponse> {
+    pub async fn get_album_suggest(&self, album_id: &str) -> Result<AlbumSuggestResponse> {
         let url = endpoints::build_url(paths::ALBUM_SUGGEST);
         let http_response = self
             .http

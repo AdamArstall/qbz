@@ -157,7 +157,9 @@ impl PipeWireBackend {
             .ok()
             .and_then(|o| {
                 if o.status.success() {
-                    String::from_utf8(o.stdout).ok().map(|s| s.trim().to_string())
+                    String::from_utf8(o.stdout)
+                        .ok()
+                        .map(|s| s.trim().to_string())
                 } else {
                     None
                 }
@@ -207,7 +209,8 @@ impl PipeWireBackend {
             } else if line.starts_with("Name:") {
                 current_name = Some(line.trim_start_matches("Name:").trim().to_string());
             } else if line.starts_with("Description:") {
-                current_description = Some(line.trim_start_matches("Description:").trim().to_string());
+                current_description =
+                    Some(line.trim_start_matches("Description:").trim().to_string());
             } else if line.starts_with("Flags:") {
                 // Check for HARDWARE flag
                 current_is_hardware = line.contains("HARDWARE");
@@ -223,7 +226,10 @@ impl PipeWireBackend {
                 }
             } else if line.starts_with("device.bus = ") {
                 // Parse device.bus property (e.g., "usb", "pci", "bluetooth")
-                let bus = line.trim_start_matches("device.bus = ").trim_matches('"').to_string();
+                let bus = line
+                    .trim_start_matches("device.bus = ")
+                    .trim_matches('"')
+                    .to_string();
                 current_device_bus = Some(bus);
             }
         }
@@ -243,10 +249,19 @@ impl PipeWireBackend {
             });
         }
 
-        log::info!("[PipeWire Backend] Enumerated {} devices via pactl", devices.len());
+        log::info!(
+            "[PipeWire Backend] Enumerated {} devices via pactl",
+            devices.len()
+        );
         for (idx, dev) in devices.iter().enumerate() {
-            log::info!("  [{}] {} (id: {}, bus: {:?}, hw: {})",
-                idx, dev.name, dev.id, dev.device_bus, dev.is_hardware);
+            log::info!(
+                "  [{}] {} (id: {}, bus: {:?}, hw: {})",
+                idx,
+                dev.name,
+                dev.id,
+                dev.device_bus,
+                dev.is_hardware
+            );
         }
 
         Ok(devices)
@@ -262,10 +277,7 @@ impl AudioBackend for PipeWireBackend {
         self.enumerate_pipewire_sinks()
     }
 
-    fn create_output_stream(
-        &self,
-        config: &BackendConfig,
-    ) -> BackendResult<MixerDeviceSink> {
+    fn create_output_stream(&self, config: &BackendConfig) -> BackendResult<MixerDeviceSink> {
         let target_sink = config.device_id.clone();
 
         // Temporarily set default sink to target (if specified)
@@ -287,7 +299,10 @@ impl AudioBackend for PipeWireBackend {
                     log::warn!("[PipeWire Backend] Failed to set default sink: {}", stderr);
                 }
                 Err(e) => {
-                    log::warn!("[PipeWire Backend] Error executing pactl set-default-sink: {}", e);
+                    log::warn!(
+                        "[PipeWire Backend] Error executing pactl set-default-sink: {}",
+                        e
+                    );
                 }
             }
 
@@ -307,7 +322,9 @@ impl AudioBackend for PipeWireBackend {
                 .ok()
                 .and_then(|o| {
                     if o.status.success() {
-                        String::from_utf8(o.stdout).ok().map(|s| s.trim().to_string())
+                        String::from_utf8(o.stdout)
+                            .ok()
+                            .map(|s| s.trim().to_string())
                     } else {
                         None
                     }
@@ -319,7 +336,8 @@ impl AudioBackend for PipeWireBackend {
                 Some(rates) if rates.contains(&config.sample_rate) => {
                     log::info!(
                         "[PipeWire Backend] DAC supports {}Hz (available: {:?})",
-                        config.sample_rate, rates
+                        config.sample_rate,
+                        rates
                     );
                     config.sample_rate
                 }
@@ -344,14 +362,26 @@ impl AudioBackend for PipeWireBackend {
         };
 
         // Force PipeWire to use the effective sample rate (for bit-perfect playback)
-        log::info!("[PipeWire Backend] Forcing sample rate to {}Hz via pw-metadata", effective_rate);
+        log::info!(
+            "[PipeWire Backend] Forcing sample rate to {}Hz via pw-metadata",
+            effective_rate
+        );
         let metadata_result = Command::new("pw-metadata")
-            .args(["-n", "settings", "0", "clock.force-rate", &effective_rate.to_string()])
+            .args([
+                "-n",
+                "settings",
+                "0",
+                "clock.force-rate",
+                &effective_rate.to_string(),
+            ])
             .output();
 
         match metadata_result {
             Ok(output) if output.status.success() => {
-                log::info!("[PipeWire Backend] Sample rate forced to {}Hz", effective_rate);
+                log::info!(
+                    "[PipeWire Backend] Sample rate forced to {}Hz",
+                    effective_rate
+                );
             }
             Ok(output) => {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -486,7 +516,7 @@ impl AudioBackend for PipeWireBackend {
         // MixerDeviceSink has zero internal buffering, so CPAL's buffer is the
         // ONLY buffer between the mixer and audio hardware.
         let cpal_buffer_size = if config.exclusive_mode {
-            BufferSize::Fixed(512)  // Low latency for exclusive mode
+            BufferSize::Fixed(512) // Low latency for exclusive mode
         } else {
             // ~100ms buffer, matching old vendored cpal period size.
             // Prevents underruns at high sample rates (192kHz = 19200 frames).
@@ -500,9 +530,17 @@ impl AudioBackend for PipeWireBackend {
             .with_supported_config(&supported_config)
             .with_buffer_size(cpal_buffer_size)
             .open_stream()
-            .map_err(|e| format!("Failed to create output stream at {}Hz: {}", effective_rate, e))?;
+            .map_err(|e| {
+                format!(
+                    "Failed to create output stream at {}Hz: {}",
+                    effective_rate, e
+                )
+            })?;
 
-        log::info!("[PipeWire Backend] Output stream created successfully at {}Hz", effective_rate);
+        log::info!(
+            "[PipeWire Backend] Output stream created successfully at {}Hz",
+            effective_rate
+        );
 
         // Re-apply clock.force-rate AFTER stream creation.
         // When resuming after PipeWire dropped the stream during pause,
@@ -512,9 +550,18 @@ impl AudioBackend for PipeWireBackend {
         // the graph at the correct rate.
         if effective_rate != 44100 && effective_rate != 48000 {
             let _ = Command::new("pw-metadata")
-                .args(["-n", "settings", "0", "clock.force-rate", &effective_rate.to_string()])
+                .args([
+                    "-n",
+                    "settings",
+                    "0",
+                    "clock.force-rate",
+                    &effective_rate.to_string(),
+                ])
                 .output();
-            log::info!("[PipeWire Backend] Re-applied clock.force-rate={}Hz after stream creation", effective_rate);
+            log::info!(
+                "[PipeWire Backend] Re-applied clock.force-rate={}Hz after stream creation",
+                effective_rate
+            );
         }
 
         Ok(mixer_sink)

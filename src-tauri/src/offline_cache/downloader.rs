@@ -83,7 +83,12 @@ impl StreamFetcher {
                     msg.push_str(&format!(" | caused by: {}", cause));
                     source = cause.source();
                 }
-                log::error!("[Offline] Download error for track {} after {} bytes: {}", track_id, cached, msg);
+                log::error!(
+                    "[Offline] Download error for track {} after {} bytes: {}",
+                    track_id,
+                    cached,
+                    msg
+                );
                 msg
             })?;
 

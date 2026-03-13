@@ -21,9 +21,13 @@ import { showToast as storeShowToast, type ToastType } from '$lib/stores/toastSt
 import { t } from '$lib/i18n';
 import type { QobuzTrack, Track, PlaylistTrack, LocalLibraryTrack, DisplayTrack } from '$lib/types';
 import {
-  qconnectAdmissionReasonKey
+  qconnectAdmissionReasonKey,
+  resolveQconnectPlayNextAuthoritativeTrackId
 } from '$lib/services/qconnectRuntime';
-import type { QconnectConnectionStatus } from '$lib/services/qconnectRuntime';
+import type {
+  QconnectConnectionStatus,
+  QconnectSessionSnapshot
+} from '$lib/services/qconnectRuntime';
 import {
   resolveQconnectPlayNextInsertAfter,
   type QconnectDiagnosticsPayload,
@@ -117,14 +121,19 @@ type QconnectPlayNextResolution = {
 };
 
 async function resolveQconnectPlayNextInsertAfterFromSnapshots(): Promise<QconnectPlayNextResolution> {
-  const [queueSnapshotResult, rendererSnapshotResult] = await Promise.allSettled([
+  const [queueSnapshotResult, rendererSnapshotResult, sessionSnapshotResult] = await Promise.allSettled([
     invoke<QconnectQueueSnapshot>('v2_qconnect_queue_snapshot'),
-    invoke<QconnectRendererSnapshot>('v2_qconnect_renderer_snapshot')
+    invoke<QconnectRendererSnapshot>('v2_qconnect_renderer_snapshot'),
+    invoke<QconnectSessionSnapshot>('v2_qconnect_session_snapshot')
   ]);
 
   const queueSnapshot = queueSnapshotResult.status === 'fulfilled' ? queueSnapshotResult.value : null;
   const rendererSnapshot = rendererSnapshotResult.status === 'fulfilled' ? rendererSnapshotResult.value : null;
-  const localCurrentTrackId = getPlayerState().currentTrack?.id ?? null;
+  const sessionSnapshot = sessionSnapshotResult.status === 'fulfilled' ? sessionSnapshotResult.value : null;
+  const localCurrentTrackId = resolveQconnectPlayNextAuthoritativeTrackId({
+    sessionSnapshot,
+    localCurrentTrackId: getPlayerState().currentTrack?.id ?? null
+  });
   const resolution = resolveQconnectPlayNextInsertAfter(queueSnapshot, rendererSnapshot, {
     authoritativeCurrentTrackId: localCurrentTrackId
   });
@@ -135,6 +144,9 @@ async function resolveQconnectPlayNextInsertAfterFromSnapshots(): Promise<Qconne
       : null,
     rendererSnapshotResult.status === 'rejected'
       ? `renderer_snapshot=${String(rendererSnapshotResult.reason)}`
+      : null,
+    sessionSnapshotResult.status === 'rejected'
+      ? `session_snapshot=${String(sessionSnapshotResult.reason)}`
       : null
   ].filter((value): value is string => value !== null).join('; ');
 

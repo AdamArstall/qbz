@@ -271,7 +271,10 @@ impl QueueManager {
             // In shuffle mode, DnD indices come from the visible upcoming list,
             // so they must be applied to shuffle_order positions (not absolute
             // track indices in state.tracks).
-            let base_pos = state.current_index.map(|_| state.shuffle_position + 1).unwrap_or(0);
+            let base_pos = state
+                .current_index
+                .map(|_| state.shuffle_position + 1)
+                .unwrap_or(0);
             let from_pos = base_pos + from_index;
             let to_pos = base_pos + to_index;
 
@@ -717,12 +720,18 @@ impl QueueManager {
 
     /// Remove one absolute track index from shuffle order and rebase remaining indices.
     fn remove_index_from_shuffle_internal(state: &mut InternalState, removed_idx: usize) {
-        if let Some(pos) = state.shuffle_order.iter().position(|&idx| idx == removed_idx) {
+        if let Some(pos) = state
+            .shuffle_order
+            .iter()
+            .position(|&idx| idx == removed_idx)
+        {
             state.shuffle_order.remove(pos);
 
             if pos < state.shuffle_position && state.shuffle_position > 0 {
                 state.shuffle_position -= 1;
-            } else if pos == state.shuffle_position && state.shuffle_position >= state.shuffle_order.len() {
+            } else if pos == state.shuffle_position
+                && state.shuffle_position >= state.shuffle_order.len()
+            {
                 state.shuffle_position = state.shuffle_order.len().saturating_sub(1);
             }
         }

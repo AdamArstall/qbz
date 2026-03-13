@@ -67,9 +67,7 @@ impl SourceQueue {
 /// Unified playback engine
 pub enum PlaybackEngine {
     /// Rodio-based (PipeWire, Pulse, ALSA via CPAL)
-    Rodio {
-        sink: RodioPlayer,
-    },
+    Rodio { sink: RodioPlayer },
     /// Direct ALSA (hw: devices, bit-perfect) with gapless source queue
     AlsaDirect {
         stream: Arc<AlsaDirectStream>,
@@ -115,8 +113,14 @@ impl PlaybackEngine {
 
             thread::spawn(move || {
                 alsa_writer_thread(
-                    stream_c, playing_c, stop_c, pos_c, dur_c,
-                    queue_c, transition_c, channels,
+                    stream_c,
+                    playing_c,
+                    stop_c,
+                    pos_c,
+                    dur_c,
+                    queue_c,
+                    transition_c,
+                    channels,
                 );
             })
         };
@@ -154,8 +158,7 @@ impl PlaybackEngine {
                 source_transition,
                 ..
             } => {
-                let is_first = source_queue.is_empty()
-                    && !is_playing.load(Ordering::SeqCst);
+                let is_first = source_queue.is_empty() && !is_playing.load(Ordering::SeqCst);
 
                 // Box the source iterator and push to queue
                 let boxed: BoxedSampleIter = Box::new(source.into_iter());
@@ -241,7 +244,11 @@ impl PlaybackEngine {
     pub fn set_volume(&self, volume: f32) {
         match self {
             Self::Rodio { sink } => sink.set_volume(volume),
-            Self::AlsaDirect { stream, hardware_volume, .. } => {
+            Self::AlsaDirect {
+                stream,
+                hardware_volume,
+                ..
+            } => {
                 if *hardware_volume {
                     #[cfg(target_os = "linux")]
                     {
@@ -250,7 +257,9 @@ impl PlaybackEngine {
                         }
                     }
                 } else {
-                    log::debug!("[ALSA Direct Engine] Hardware volume control disabled (use DAC/amplifier)");
+                    log::debug!(
+                        "[ALSA Direct Engine] Hardware volume control disabled (use DAC/amplifier)"
+                    );
                 }
             }
         }
@@ -264,9 +273,7 @@ impl PlaybackEngine {
                 is_playing,
                 source_queue,
                 ..
-            } => {
-                !is_playing.load(Ordering::SeqCst) && source_queue.is_empty()
-            }
+            } => !is_playing.load(Ordering::SeqCst) && source_queue.is_empty(),
         }
     }
 
@@ -275,11 +282,11 @@ impl PlaybackEngine {
     pub fn take_source_transition(&self) -> bool {
         match self {
             Self::Rodio { .. } => false,
-            Self::AlsaDirect { source_transition, .. } => {
-                source_transition.compare_exchange(
-                    true, false, Ordering::SeqCst, Ordering::SeqCst
-                ).is_ok()
-            }
+            Self::AlsaDirect {
+                source_transition, ..
+            } => source_transition
+                .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok(),
         }
     }
 
@@ -288,7 +295,11 @@ impl PlaybackEngine {
     pub fn position_secs(&self) -> Option<u64> {
         match self {
             Self::Rodio { .. } => None,
-            Self::AlsaDirect { position_frames, stream, .. } => {
+            Self::AlsaDirect {
+                position_frames,
+                stream,
+                ..
+            } => {
                 let frames = position_frames.load(Ordering::SeqCst);
                 let sample_rate = stream.sample_rate() as u64;
                 Some(frames / sample_rate)
@@ -301,7 +312,11 @@ impl PlaybackEngine {
     pub fn duration_secs(&self) -> Option<u64> {
         match self {
             Self::Rodio { .. } => None,
-            Self::AlsaDirect { duration_frames, stream, .. } => {
+            Self::AlsaDirect {
+                duration_frames,
+                stream,
+                ..
+            } => {
                 let frames = duration_frames.load(Ordering::SeqCst);
                 let sample_rate = stream.sample_rate() as u64;
                 Some(frames / sample_rate)

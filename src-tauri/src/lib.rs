@@ -28,7 +28,6 @@ pub mod credentials;
 pub mod discogs;
 pub mod flatpak;
 pub mod image_cache;
-pub mod snap;
 pub mod lastfm;
 pub mod library;
 pub mod listenbrainz;
@@ -40,6 +39,7 @@ pub mod musicbrainz;
 pub mod network;
 pub mod offline;
 pub mod offline_cache;
+pub mod pdf_viewer;
 pub mod playback_context;
 #[allow(deprecated)]
 pub mod player;
@@ -50,14 +50,14 @@ pub mod radio_engine;
 pub mod reco_store;
 pub mod session_store;
 pub mod share;
+pub mod snap;
 pub mod tray;
 pub mod updates;
 pub mod user_data;
 pub mod visualizer;
-pub mod pdf_viewer;
 
-use std::sync::Arc;
 use rustls::crypto::{aws_lc_rs, CryptoProvider};
+use std::sync::Arc;
 use tauri::{Emitter, Manager};
 use tokio::sync::{Mutex, RwLock};
 
@@ -214,7 +214,10 @@ fn setup_kwin_window_rule() -> Result<(), String> {
     }
 
     let rule_num = if let Some(num) = qbz_rule_group {
-        log::info!("KWin window rule for QBZ already exists (group {}), updating", num);
+        log::info!(
+            "KWin window rule for QBZ already exists (group {}), updating",
+            num
+        );
         num
     } else {
         existing_count + 1
@@ -225,16 +228,24 @@ fn setup_kwin_window_rule() -> Result<(), String> {
     let rules: &[(&str, &str)] = &[
         ("Description", "QBZ Native Title Bar"),
         ("noborder", "false"),
-        ("noborderrule", "2"),       // 2 = Force
+        ("noborderrule", "2"), // 2 = Force
         ("wmclass", "qbz"),
         ("wmclasscomplete", "false"),
-        ("wmclassmatch", "1"),       // 1 = Exact match
-        ("types", "1"),              // 1 = Normal windows
+        ("wmclassmatch", "1"), // 1 = Exact match
+        ("types", "1"),        // 1 = Normal windows
     ];
 
     for (key, value) in rules {
         let output = std::process::Command::new("kwriteconfig6")
-            .args(["--file", "kwinrulesrc", "--group", &group, "--key", key, value])
+            .args([
+                "--file",
+                "kwinrulesrc",
+                "--group",
+                &group,
+                "--key",
+                key,
+                value,
+            ])
             .output()
             .map_err(|e| format!("kwriteconfig6 failed: {}", e))?;
 
@@ -251,7 +262,15 @@ fn setup_kwin_window_rule() -> Result<(), String> {
     if qbz_rule_group.is_none() {
         let new_count = (existing_count + 1).to_string();
         let output = std::process::Command::new("kwriteconfig6")
-            .args(["--file", "kwinrulesrc", "--group", "General", "--key", "count", &new_count])
+            .args([
+                "--file",
+                "kwinrulesrc",
+                "--group",
+                "General",
+                "--key",
+                "count",
+                &new_count,
+            ])
             .output()
             .map_err(|e| format!("kwriteconfig6 count update failed: {}", e))?;
 
@@ -276,7 +295,10 @@ fn setup_kwin_window_rule() -> Result<(), String> {
         );
     }
 
-    log::info!("KWin window rule set for native title bar (group {})", rule_num);
+    log::info!(
+        "KWin window rule set for native title bar (group {})",
+        rule_num
+    );
     Ok(())
 }
 
@@ -324,7 +346,15 @@ fn remove_kwin_window_rule() {
         if count > 0 {
             let new_count = (count - 1).to_string();
             let _ = std::process::Command::new("kwriteconfig6")
-                .args(["--file", "kwinrulesrc", "--group", "General", "--key", "count", &new_count])
+                .args([
+                    "--file",
+                    "kwinrulesrc",
+                    "--group",
+                    "General",
+                    "--key",
+                    "count",
+                    &new_count,
+                ])
                 .output();
         }
 
@@ -356,8 +386,14 @@ fn get_screen_resolution() -> Option<(f64, f64)> {
                     if let Some(dims) = trimmed.split_whitespace().nth(1) {
                         let parts: Vec<&str> = dims.split('x').collect();
                         if parts.len() == 2 {
-                            if let (Ok(w), Ok(h)) = (parts[0].parse::<f64>(), parts[1].parse::<f64>()) {
-                                log::info!("Screen resolution detected via xdpyinfo: {}x{}", w as u32, h as u32);
+                            if let (Ok(w), Ok(h)) =
+                                (parts[0].parse::<f64>(), parts[1].parse::<f64>())
+                            {
+                                log::info!(
+                                    "Screen resolution detected via xdpyinfo: {}x{}",
+                                    w as u32,
+                                    h as u32
+                                );
                                 return Some((w, h));
                             }
                         }
@@ -381,8 +417,14 @@ fn get_screen_resolution() -> Option<(f64, f64)> {
                             let res_part = token.split('+').next().unwrap_or("");
                             let parts: Vec<&str> = res_part.split('x').collect();
                             if parts.len() == 2 {
-                                if let (Ok(w), Ok(h)) = (parts[0].parse::<f64>(), parts[1].parse::<f64>()) {
-                                    log::info!("Screen resolution detected via xrandr: {}x{}", w as u32, h as u32);
+                                if let (Ok(w), Ok(h)) =
+                                    (parts[0].parse::<f64>(), parts[1].parse::<f64>())
+                                {
+                                    log::info!(
+                                        "Screen resolution detected via xrandr: {}x{}",
+                                        w as u32,
+                                        h as u32
+                                    );
                                     return Some((w, h));
                                 }
                             }
@@ -407,9 +449,7 @@ fn apply_linux_webkit_workarounds() {
         .unwrap_or(false);
 
     if force_gpu {
-        log::warn!(
-            "QBZ_WEBKIT_FORCE_GPU is enabled; skipping Linux WebKit safety workarounds"
-        );
+        log::warn!("QBZ_WEBKIT_FORCE_GPU is enabled; skipping Linux WebKit safety workarounds");
         return;
     }
 
@@ -574,9 +614,12 @@ pub fn run() {
             if saved_win_width > max_w || saved_win_height > max_h {
                 log::warn!(
                     "Window size {}x{} exceeds screen {}x{}, clamping to {}x{}",
-                    saved_win_width as u32, saved_win_height as u32,
-                    screen_w as u32, screen_h as u32,
-                    max_w as u32, max_h as u32
+                    saved_win_width as u32,
+                    saved_win_height as u32,
+                    screen_w as u32,
+                    screen_h as u32,
+                    max_w as u32,
+                    max_h as u32
                 );
                 saved_win_width = saved_win_width.min(max_w);
                 saved_win_height = saved_win_height.min(max_h);
@@ -675,22 +718,20 @@ pub fn run() {
     let listenbrainz_v2_state = integrations_v2::ListenBrainzV2State::new();
     let musicbrainz_v2_state = integrations_v2::MusicBrainzV2State::new();
     let lastfm_v2_state = integrations_v2::LastFmV2State::new();
-    let image_cache_settings_state = config::ImageCacheSettingsState::new()
-        .unwrap_or_else(|e| {
-            log::warn!(
-                "Failed to initialize image cache settings: {}. Using empty state.",
-                e
-            );
-            config::ImageCacheSettingsState::new_empty()
-        });
-    let image_cache_state = image_cache::ImageCacheState::new()
-        .unwrap_or_else(|e| {
-            log::warn!(
-                "Failed to initialize image cache: {}. Using empty state.",
-                e
-            );
-            image_cache::ImageCacheState::new_empty()
-        });
+    let image_cache_settings_state = config::ImageCacheSettingsState::new().unwrap_or_else(|e| {
+        log::warn!(
+            "Failed to initialize image cache settings: {}. Using empty state.",
+            e
+        );
+        config::ImageCacheSettingsState::new_empty()
+    });
+    let image_cache_state = image_cache::ImageCacheState::new().unwrap_or_else(|e| {
+        log::warn!(
+            "Failed to initialize image cache: {}. Using empty state.",
+            e
+        );
+        image_cache::ImageCacheState::new_empty()
+    });
     let developer_settings_state = config::developer_settings::DeveloperSettingsState::new()
         .unwrap_or_else(|e| {
             log::warn!(

@@ -61,9 +61,9 @@ use crate::runtime::{
     RuntimeStatus,
 };
 use crate::AppState;
-use md5::{Digest, Md5};
 use ashpd::desktop::notification::{Notification as PortalNotification, NotificationProxy};
 use ashpd::desktop::Icon;
+use md5::{Digest, Md5};
 use std::collections::HashSet;
 use std::fs;
 use std::io::{Cursor, Write};
@@ -260,7 +260,11 @@ fn probe_flac_sample_rate(data: &[u8]) -> Option<u32> {
         return None;
     }
     let sr = ((data[18] as u32) << 12) | ((data[19] as u32) << 4) | ((data[20] as u32) >> 4);
-    if sr > 0 { Some(sr) } else { None }
+    if sr > 0 {
+        Some(sr)
+    } else {
+        None
+    }
 }
 
 /// Check if cached audio data has a sample rate that the current ALSA hardware
@@ -365,7 +369,9 @@ async fn download_audio(url: &str) -> Result<Vec<u8>, String> {
                 if !all_data.is_empty() {
                     log::error!(
                         "[V2] Download error after {}/{} bytes: {}",
-                        all_data.len(), expected_len, msg
+                        all_data.len(),
+                        expected_len,
+                        msg
                     );
                 } else {
                     log::error!("[V2] Download error (0 bytes received): {}", msg);
@@ -378,7 +384,8 @@ async fn download_audio(url: &str) -> Result<Vec<u8>, String> {
     if expected_len > 0 && all_data.len() != expected_len {
         log::warn!(
             "[V2] Download size mismatch: got {} bytes, expected {}",
-            all_data.len(), expected_len
+            all_data.len(),
+            expected_len
         );
     }
 
@@ -455,19 +462,18 @@ async fn v2_get_stream_info(url: &str) -> Result<V2StreamInfo, String> {
     );
 
     // Extract audio format from FLAC header
-    let (sample_rate, channels, bit_depth) = if initial_bytes.len() >= 26
-        && initial_bytes.starts_with(b"fLaC")
-    {
-        let sr = ((initial_bytes[18] as u32) << 12)
-            | ((initial_bytes[19] as u32) << 4)
-            | ((initial_bytes[20] as u32) >> 4);
-        let ch = ((initial_bytes[20] >> 1) & 0x07) + 1;
-        let bps = ((initial_bytes[20] & 0x01) << 4) | ((initial_bytes[21] >> 4) & 0x0F);
-        (sr, ch as u16, (bps + 1) as u32)
-    } else {
-        log::warn!("[V2] Non-FLAC stream, using defaults (44100Hz, 2ch, 16-bit)");
-        (44100, 2, 16)
-    };
+    let (sample_rate, channels, bit_depth) =
+        if initial_bytes.len() >= 26 && initial_bytes.starts_with(b"fLaC") {
+            let sr = ((initial_bytes[18] as u32) << 12)
+                | ((initial_bytes[19] as u32) << 4)
+                | ((initial_bytes[20] as u32) >> 4);
+            let ch = ((initial_bytes[20] >> 1) & 0x07) + 1;
+            let bps = ((initial_bytes[20] & 0x01) << 4) | ((initial_bytes[21] >> 4) & 0x0F);
+            (sr, ch as u16, (bps + 1) as u32)
+        } else {
+            log::warn!("[V2] Non-FLAC stream, using defaults (44100Hz, 2ch, 16-bit)");
+            (44100, 2, 16)
+        };
 
     Ok(V2StreamInfo {
         content_length,
@@ -570,7 +576,10 @@ async fn v2_download_and_stream(
 
     if !skip_cache {
         cache.insert(track_id, all_data);
-        log::info!("[V2/STREAMING] Track {} cached for future playback", track_id);
+        log::info!(
+            "[V2/STREAMING] Track {} cached for future playback",
+            track_id
+        );
     }
 
     Ok(())
@@ -862,7 +871,10 @@ pub async fn runtime_bootstrap(
                         return Err(RuntimeError::V2NotInitialized);
                     }
                     if elapsed.as_secs() % 5 == 0 && elapsed.as_millis() % 5000 < 150 {
-                        log::info!("[Runtime] Waiting for CoreBridge... ({:.0}s)", elapsed.as_secs_f64());
+                        log::info!(
+                            "[Runtime] Waiting for CoreBridge... ({:.0}s)",
+                            elapsed.as_secs_f64()
+                        );
                     }
                     tokio::time::sleep(cb_poll).await;
                 }
@@ -932,7 +944,8 @@ pub async fn runtime_bootstrap(
                             if let Some(store) = guard.as_ref() {
                                 if let Ok(fresh) = store.get_settings() {
                                     log::info!("[Runtime] Syncing audio settings to player (sync_audio_on_startup=true)");
-                                    let _ = player.reload_settings(convert_to_qbz_audio_settings(&fresh));
+                                    let _ = player
+                                        .reload_settings(convert_to_qbz_audio_settings(&fresh));
                                 }
                             }
                         }
@@ -978,16 +991,15 @@ pub async fn runtime_bootstrap(
                 }
 
                 if let Some(bridge) = core_bridge.try_get().await {
-                    let core_session: qbz_models::UserSession = match serde_json::to_value(&session)
-                        .and_then(serde_json::from_value)
-                    {
-                        Ok(s) => s,
-                        Err(e) => {
-                            log::error!("[Runtime] OAuth session conversion failed: {}", e);
-                            manager.set_bootstrap_in_progress(false).await;
-                            return Err(RuntimeError::Internal(e.to_string()));
-                        }
-                    };
+                    let core_session: qbz_models::UserSession =
+                        match serde_json::to_value(&session).and_then(serde_json::from_value) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                log::error!("[Runtime] OAuth session conversion failed: {}", e);
+                                manager.set_bootstrap_in_progress(false).await;
+                                return Err(RuntimeError::Internal(e.to_string()));
+                            }
+                        };
                     match bridge.login_with_session(core_session).await {
                         Ok(_) => {
                             log::info!("[Runtime] CoreBridge session restored via OAuth token");
@@ -1037,7 +1049,8 @@ pub async fn runtime_bootstrap(
                             if let Some(store) = guard.as_ref() {
                                 if let Ok(fresh) = store.get_settings() {
                                     log::info!("[Runtime] Syncing audio settings to player after OAuth login (sync_audio_on_startup=true)");
-                                    let _ = player.reload_settings(convert_to_qbz_audio_settings(&fresh));
+                                    let _ = player
+                                        .reload_settings(convert_to_qbz_audio_settings(&fresh));
                                 }
                             }
                         }
@@ -1477,8 +1490,7 @@ pub async fn v2_start_oauth_login(
     );
 
     // Shared state: code captured by the navigation callback
-    let code_holder: Arc<std::sync::Mutex<Option<String>>> =
-        Arc::new(std::sync::Mutex::new(None));
+    let code_holder: Arc<std::sync::Mutex<Option<String>>> = Arc::new(std::sync::Mutex::new(None));
     let notify = Arc::new(tokio::sync::Notify::new());
 
     let code_holder_nav = Arc::clone(&code_holder);
@@ -1534,7 +1546,11 @@ pub async fn v2_start_oauth_login(
         // On Linux, .window_features(features) sets the required related_view automatically.
         let popup_id = popup_counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let label = format!("qobuz-oauth-popup-{}", popup_id);
-        log::info!("[OAuth] New popup window requested: {} (label={})", url, label);
+        log::info!(
+            "[OAuth] New popup window requested: {} (label={})",
+            url,
+            label
+        );
 
         let code_holder_p = Arc::clone(&code_holder_popup);
         let notify_p = Arc::clone(&notify_popup);
@@ -1587,12 +1603,9 @@ pub async fn v2_start_oauth_login(
     .map_err(|e| format!("Failed to open OAuth window: {}", e))?;
 
     // Wait up to 5 minutes for the user to complete login
-    let timed_out = tokio::time::timeout(
-        std::time::Duration::from_secs(300),
-        notify.notified(),
-    )
-    .await
-    .is_err();
+    let timed_out = tokio::time::timeout(std::time::Duration::from_secs(300), notify.notified())
+        .await
+        .is_err();
 
     // Best-effort close of main window and any open popups
     for win in app.webview_windows().values() {
@@ -1664,24 +1677,23 @@ pub async fn v2_start_oauth_login(
 
     // Convert api::models::UserSession → qbz_models::UserSession for CoreBridge
     // Both types are structurally identical; serde round-trip is safe.
-    let core_session: UserSession = match serde_json::to_value(&session)
-        .and_then(serde_json::from_value)
-    {
-        Ok(s) => s,
-        Err(e) => {
-            log::error!("[V2] Failed to convert session for CoreBridge: {}", e);
-            rollback_auth_state(&manager, &app).await;
-            return Ok(V2LoginResponse {
-                success: false,
-                user_name: None,
-                user_id: None,
-                subscription: None,
-                subscription_valid_until: None,
-                error: Some(format!("Session conversion error: {}", e)),
-                error_code: Some("internal_error".to_string()),
-            });
-        }
-    };
+    let core_session: UserSession =
+        match serde_json::to_value(&session).and_then(serde_json::from_value) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("[V2] Failed to convert session for CoreBridge: {}", e);
+                rollback_auth_state(&manager, &app).await;
+                return Ok(V2LoginResponse {
+                    success: false,
+                    user_name: None,
+                    user_id: None,
+                    subscription: None,
+                    subscription_valid_until: None,
+                    error: Some(format!("Session conversion error: {}", e)),
+                    error_code: Some("internal_error".to_string()),
+                });
+            }
+        };
 
     // CoreBridge auth — inject session directly (OAuth has no email/password)
     if let Some(bridge) = core_bridge.try_get().await {
@@ -1792,7 +1804,14 @@ fn spawn_v2_prefetch(
     quality: Quality,
     streaming_only: bool,
 ) {
-    spawn_v2_prefetch_with_hw_check(bridge, cache, upcoming_tracks, quality, streaming_only, None);
+    spawn_v2_prefetch_with_hw_check(
+        bridge,
+        cache,
+        upcoming_tracks,
+        quality,
+        streaming_only,
+        None,
+    );
 }
 
 /// Prefetch with optional hardware rate checking.
@@ -1893,7 +1912,9 @@ fn spawn_v2_prefetch_with_hw_check(
                         if let Some(bridge) = bridge_guard.as_ref() {
                             if let Ok(stream_url) = bridge.get_stream_url(track_id, quality).await {
                                 let track_rate = (stream_url.sampling_rate * 1000.0) as u32;
-                                if qbz_audio::device_supports_sample_rate(device_id, track_rate) == Some(false) {
+                                if qbz_audio::device_supports_sample_rate(device_id, track_rate)
+                                    == Some(false)
+                                {
                                     log::info!(
                                         "[V2/PREFETCH] Track {} at {}Hz incompatible with hardware, prefetching at Hi-Res",
                                         track_id, track_rate
@@ -1926,9 +1947,16 @@ fn spawn_v2_prefetch_with_hw_check(
                     log::info!("[V2/PREFETCH] Complete for track {}", track_id);
                 }
                 Err(e) => {
-                    log::warn!("[V2/PREFETCH] Failed for track {} (attempt 1): {}", track_id, e);
+                    log::warn!(
+                        "[V2/PREFETCH] Failed for track {} (attempt 1): {}",
+                        track_id,
+                        e
+                    );
                     // Retry with fresh URL — CDN edge may have returned EOF
-                    log::info!("[V2/PREFETCH] Retrying track {} with fresh URL...", track_id);
+                    log::info!(
+                        "[V2/PREFETCH] Retrying track {} with fresh URL...",
+                        track_id
+                    );
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                     let retry_result = async {
                         let bridge_guard = bridge_clone.read().await;
@@ -1936,11 +1964,15 @@ fn spawn_v2_prefetch_with_hw_check(
                         let stream_url = bridge.get_stream_url(track_id, effective_quality).await?;
                         drop(bridge_guard);
                         download_audio(&stream_url.url).await
-                    }.await;
+                    }
+                    .await;
                     match retry_result {
                         Ok(data) => {
                             cache_clone.insert(track_id, data);
-                            log::info!("[V2/PREFETCH] Complete for track {} (retry succeeded)", track_id);
+                            log::info!(
+                                "[V2/PREFETCH] Complete for track {} (retry succeeded)",
+                                track_id
+                            );
                         }
                         Err(e2) => {
                             // Both attempts at current quality failed — try lower quality
@@ -1952,15 +1984,21 @@ fn spawn_v2_prefetch_with_hw_check(
                                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                                 let fallback_result = async {
                                     let bridge_guard = bridge_clone.read().await;
-                                    let bridge = bridge_guard.as_ref().ok_or("CoreBridge not initialized")?;
-                                    let stream_url = bridge.get_stream_url(track_id, fallback_q).await?;
+                                    let bridge = bridge_guard
+                                        .as_ref()
+                                        .ok_or("CoreBridge not initialized")?;
+                                    let stream_url =
+                                        bridge.get_stream_url(track_id, fallback_q).await?;
                                     log::info!(
                                         "[V2/PREFETCH] Quality fallback: {} → {} (format_id={})",
-                                        effective_quality.label(), fallback_q.label(), stream_url.format_id
+                                        effective_quality.label(),
+                                        fallback_q.label(),
+                                        stream_url.format_id
                                     );
                                     drop(bridge_guard);
                                     download_audio(&stream_url.url).await
-                                }.await;
+                                }
+                                .await;
                                 match fallback_result {
                                     Ok(data) => {
                                         cache_clone.insert(track_id, data);
@@ -2259,21 +2297,20 @@ pub async fn v2_get_hardware_audio_status(
     core_bridge: State<'_, CoreBridgeState>,
 ) -> Result<HardwareAudioStatus, String> {
     // Try V2 player first (CoreBridge), fall back to legacy player
-    let (sample_rate, bit_depth, is_playing) =
-        if let Some(bridge) = core_bridge.try_get().await {
-            let player = bridge.player();
-            (
-                player.state.get_sample_rate(),
-                player.state.get_bit_depth(),
-                player.state.is_playing(),
-            )
-        } else {
-            (
-                state.player.state.get_sample_rate(),
-                state.player.state.get_bit_depth(),
-                state.player.state.is_playing(),
-            )
-        };
+    let (sample_rate, bit_depth, is_playing) = if let Some(bridge) = core_bridge.try_get().await {
+        let player = bridge.player();
+        (
+            player.state.get_sample_rate(),
+            player.state.get_bit_depth(),
+            player.state.is_playing(),
+        )
+    } else {
+        (
+            state.player.state.get_sample_rate(),
+            state.player.state.get_bit_depth(),
+            state.player.state.is_playing(),
+        )
+    };
 
     let active = is_playing && sample_rate > 0;
 
@@ -2931,7 +2968,10 @@ pub fn v2_check_qobuzapp_handler() -> Result<bool, RuntimeError> {
 #[tauri::command]
 pub fn v2_register_qobuzapp_handler() -> Result<bool, RuntimeError> {
     let desktop_file = find_qbz_desktop_file();
-    log::info!("[URI Handler] Registering {} for x-scheme-handler/qobuzapp", desktop_file);
+    log::info!(
+        "[URI Handler] Registering {} for x-scheme-handler/qobuzapp",
+        desktop_file
+    );
 
     let status = std::process::Command::new("xdg-mime")
         .args(["default", &desktop_file, "x-scheme-handler/qobuzapp"])
@@ -4766,14 +4806,10 @@ pub async fn v2_get_album_suggestions(
         .await
         .map_err(|e| format!("Failed to get album suggestions: {}", e))?;
 
-    let mut albums = response.albums
-        .map(|page| page.items)
-        .unwrap_or_default();
+    let mut albums = response.albums.map(|page| page.items).unwrap_or_default();
 
     // Apply blacklist
-    albums.retain(|album| {
-        !blacklist_state.is_blacklisted(album.artist.id)
-    });
+    albums.retain(|album| !blacklist_state.is_blacklisted(album.artist.id));
 
     let max = limit.unwrap_or(10) as usize;
     albums.truncate(max);
@@ -4793,10 +4829,8 @@ pub async fn v2_reco_get_forgotten_favorites(
 ) -> Result<Vec<crate::reco_store::AlbumCardMeta>, String> {
     let guard = reco_state.db.lock().await;
     let db = guard.as_ref().ok_or("No active session")?;
-    let album_ids = db.get_forgotten_favorite_album_ids(
-        limit.unwrap_or(12),
-        recencyDays.unwrap_or(30),
-    )?;
+    let album_ids =
+        db.get_forgotten_favorite_album_ids(limit.unwrap_or(12), recencyDays.unwrap_or(30))?;
     drop(guard);
 
     if album_ids.is_empty() {
@@ -4804,13 +4838,8 @@ pub async fn v2_reco_get_forgotten_favorites(
     }
 
     // Resolve album IDs to metadata using the same 3-tier cache as home
-    crate::reco_store::commands::resolve_albums(
-        &album_ids,
-        &reco_state,
-        &app_state,
-        &cache_state,
-    )
-    .await
+    crate::reco_store::commands::resolve_albums(&album_ids, &reco_state, &app_state, &cache_state)
+        .await
 }
 
 /// Get user's top genres by play count
@@ -5342,7 +5371,9 @@ pub async fn v2_library_remove_custom_artist_image(
     // Get current info to find file paths to delete
     let guard = state.db.lock().await;
     let db = guard.as_ref().ok_or("No active session - please log in")?;
-    let info = db.get_artist_image(&artist_name).map_err(|e| e.to_string())?;
+    let info = db
+        .get_artist_image(&artist_name)
+        .map_err(|e| e.to_string())?;
 
     if let Some(info) = info {
         // Delete custom image file if it exists
@@ -5462,7 +5493,9 @@ pub async fn v2_library_remove_custom_album_cover(
     let guard = state.db.lock().await;
     let db = guard.as_ref().ok_or("No active session - please log in")?;
 
-    let existing = db.get_custom_album_cover(&album_id).map_err(|e| e.to_string())?;
+    let existing = db
+        .get_custom_album_cover(&album_id)
+        .map_err(|e| e.to_string())?;
     if let Some(path) = existing {
         let p = std::path::Path::new(&path);
         if p.exists() {
@@ -5473,7 +5506,8 @@ pub async fn v2_library_remove_custom_album_cover(
         }
     }
 
-    db.remove_custom_album_cover(&album_id).map_err(|e| e.to_string())?;
+    db.remove_custom_album_cover(&album_id)
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -5487,10 +5521,7 @@ pub async fn v2_library_get_all_custom_album_covers(
 }
 
 #[tauri::command]
-pub async fn v2_save_image_url_to_file(
-    url: String,
-    dest_path: String,
-) -> Result<(), String> {
+pub async fn v2_save_image_url_to_file(url: String, dest_path: String) -> Result<(), String> {
     let response = reqwest::get(&url)
         .await
         .map_err(|e| format!("Failed to download image: {}", e))?;
@@ -5498,8 +5529,7 @@ pub async fn v2_save_image_url_to_file(
         .bytes()
         .await
         .map_err(|e| format!("Failed to read image data: {}", e))?;
-    std::fs::write(&dest_path, &bytes)
-        .map_err(|e| format!("Failed to save image: {}", e))?;
+    std::fs::write(&dest_path, &bytes).map_err(|e| format!("Failed to save image: {}", e))?;
     Ok(())
 }
 
@@ -7245,10 +7275,7 @@ pub async fn v2_play_track(
             .store
             .lock()
             .map_err(|e| RuntimeError::Internal(format!("Lock error: {}", e)))?;
-        match guard
-            .as_ref()
-            .and_then(|s| s.get_settings().ok())
-        {
+        match guard.as_ref().and_then(|s| s.get_settings().ok()) {
             Some(s) => (s.stream_first_track, s.streaming_only),
             None => (false, false),
         }
@@ -7500,7 +7527,8 @@ pub async fn v2_play_track(
                 // Probe failed (CDN EOF, etc.) — fall through to standard download path
                 log::warn!(
                     "[V2/STREAMING] Probe failed for track {}: {}. Falling back to full download.",
-                    track_id, e
+                    track_id,
+                    e
                 );
                 // Get a fresh URL and use the standard download path below
                 let retry_url = bridge_guard
@@ -7524,7 +7552,9 @@ pub async fn v2_play_track(
                                 .map_err(RuntimeError::Internal)?;
                             log::info!(
                                 "[V2/DOWNLOAD] Streaming quality fallback: {} → {} (format_id={})",
-                                final_quality.label(), fallback_q.label(), fallback_url.format_id
+                                final_quality.label(),
+                                fallback_q.label(),
+                                fallback_url.format_id
                             );
                             stream_url = fallback_url;
                             match download_audio(&stream_url.url).await {
@@ -7532,14 +7562,20 @@ pub async fn v2_play_track(
                                 Err(e3) => {
                                     log::warn!("[V2/DOWNLOAD] Quality fallback also failed for track {}: {}", track_id, e3);
                                     return Err(RuntimeError::Internal(format!(
-                                        "Download failed after quality fallback: {}", e3
+                                        "Download failed after quality fallback: {}",
+                                        e3
                                     )));
                                 }
                             }
                         } else {
-                            log::warn!("[V2/DOWNLOAD] Retry also failed for track {}: {}", track_id, e2);
+                            log::warn!(
+                                "[V2/DOWNLOAD] Retry also failed for track {}: {}",
+                                track_id,
+                                e2
+                            );
                             return Err(RuntimeError::Internal(format!(
-                                "Download failed after retry: {}", e2
+                                "Download failed after retry: {}",
+                                e2
                             )));
                         }
                     }
@@ -7548,15 +7584,27 @@ pub async fn v2_play_track(
                 if !streaming_only {
                     cache.insert(track_id, audio_data.clone());
                 }
-                player.play_data(audio_data, track_id).map_err(RuntimeError::Internal)?;
-                log::info!("[V2] Playing track {} ({} bytes, fallback from streaming)", track_id, data_size);
+                player
+                    .play_data(audio_data, track_id)
+                    .map_err(RuntimeError::Internal)?;
+                log::info!(
+                    "[V2] Playing track {} ({} bytes, fallback from streaming)",
+                    track_id,
+                    data_size
+                );
                 let upcoming_tracks = bridge_guard.peek_upcoming(V2_PREFETCH_LOOKAHEAD).await;
                 drop(bridge_guard);
                 spawn_v2_prefetch_with_hw_check(
-                    bridge.0.clone(), cache, upcoming_tracks,
-                    final_quality, streaming_only, hw_device_id,
+                    bridge.0.clone(),
+                    cache,
+                    upcoming_tracks,
+                    final_quality,
+                    streaming_only,
+                    hw_device_id,
                 );
-                return Ok(V2PlayTrackResult { format_id: Some(stream_url.format_id) });
+                return Ok(V2PlayTrackResult {
+                    format_id: Some(stream_url.format_id),
+                });
             }
         };
 
@@ -7643,9 +7691,16 @@ pub async fn v2_play_track(
     let audio_data = match download_audio(&stream_url.url).await {
         Ok(data) => data,
         Err(e) => {
-            log::warn!("[V2/DOWNLOAD] First attempt failed for track {}: {}", track_id, e);
+            log::warn!(
+                "[V2/DOWNLOAD] First attempt failed for track {}: {}",
+                track_id,
+                e
+            );
             // Retry with fresh URL — CDN edge may have returned premature EOF
-            log::info!("[V2/DOWNLOAD] Retrying track {} with fresh URL...", track_id);
+            log::info!(
+                "[V2/DOWNLOAD] Retrying track {} with fresh URL...",
+                track_id
+            );
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             let retry_url = bridge_guard
                 .get_stream_url(track_id, final_quality)
@@ -7667,14 +7722,17 @@ pub async fn v2_play_track(
                             .map_err(RuntimeError::Internal)?;
                         log::info!(
                             "[V2/DOWNLOAD] Quality fallback: {} → {} (format_id={})",
-                            final_quality.label(), fallback_q.label(), fallback_url.format_id
+                            final_quality.label(),
+                            fallback_q.label(),
+                            fallback_url.format_id
                         );
                         download_audio(&fallback_url.url)
                             .await
                             .map_err(RuntimeError::Internal)?
                     } else {
                         return Err(RuntimeError::Internal(format!(
-                            "Download failed after retry (no lower quality available): {}", e2
+                            "Download failed after retry (no lower quality available): {}",
+                            e2
                         )));
                     }
                 }
@@ -8182,7 +8240,9 @@ pub async fn v2_set_audio_gapless_enabled(
     // Sync to player immediately so gapless takes effect without restart
     if let Some(fresh) = fresh_settings {
         if let Some(b) = bridge.try_get().await {
-            let _ = b.player().reload_settings(convert_to_qbz_audio_settings(&fresh));
+            let _ = b
+                .player()
+                .reload_settings(convert_to_qbz_audio_settings(&fresh));
         }
     }
     Ok(())
@@ -8212,7 +8272,9 @@ pub async fn v2_set_audio_normalization_enabled(
 
     if let Some(fresh) = fresh_settings {
         if let Some(b) = bridge.try_get().await {
-            let _ = b.player().reload_settings(convert_to_qbz_audio_settings(&fresh));
+            let _ = b
+                .player()
+                .reload_settings(convert_to_qbz_audio_settings(&fresh));
         }
     }
     Ok(())
@@ -8242,7 +8304,9 @@ pub async fn v2_set_audio_normalization_target(
 
     if let Some(fresh) = fresh_settings {
         if let Some(b) = bridge.try_get().await {
-            let _ = b.player().reload_settings(convert_to_qbz_audio_settings(&fresh));
+            let _ = b
+                .player()
+                .reload_settings(convert_to_qbz_audio_settings(&fresh));
         }
     }
     Ok(())
@@ -9512,7 +9576,9 @@ pub async fn v2_discover_artists_by_location(
     runtime: State<'_, RuntimeManagerState>,
     app: tauri::AppHandle,
 ) -> Result<qbz_integrations::musicbrainz::LocationDiscoveryResponse, RuntimeError> {
-    use crate::musicbrainz::genre_normalization::{extract_affinity_seeds, genre_summary, is_broad_genre};
+    use crate::musicbrainz::genre_normalization::{
+        extract_affinity_seeds, genre_summary, is_broad_genre,
+    };
     use crate::musicbrainz::location_discovery::{build_scene_cache_key, compute_affinity_score};
     use qbz_integrations::musicbrainz::{
         AffinitySeeds, LocationCandidate, LocationDiscoveryResponse, Tag,
@@ -9553,7 +9619,11 @@ pub async fn v2_discover_artists_by_location(
                 (area_name.clone(), display)
             }
             Err(e) => {
-                log::warn!("[V2] Area resolution failed: {}, using '{}' directly", e, area_name);
+                log::warn!(
+                    "[V2] Area resolution failed: {}, using '{}' directly",
+                    e,
+                    area_name
+                );
                 let display = if let Some(ref c) = country {
                     format!("{}, {}", c, area_name)
                 } else {
@@ -9583,11 +9653,7 @@ pub async fn v2_discover_artists_by_location(
     let source_seeds = AffinitySeeds {
         genres: genres.clone(),
         tags: tags.clone(),
-        normalized_seeds: genres
-            .iter()
-            .chain(tags.iter())
-            .cloned()
-            .collect(),
+        normalized_seeds: genres.iter().chain(tags.iter()).cloned().collect(),
     };
 
     let cache_key_area = area_id.as_deref().unwrap_or(&search_name);
@@ -9665,14 +9731,23 @@ pub async fn v2_discover_artists_by_location(
     for (genre_idx, genre) in search_genres.iter().enumerate() {
         // Progress: MB search phase = 0-40%
         let progress = ((genre_idx as f64 / total_genres as f64) * 40.0) as u8;
-        let _ = app.emit("scene-discovery-progress", serde_json::json!({
-            "phase": "searching",
-            "progress": progress,
-            "detail": genre
-        }));
+        let _ = app.emit(
+            "scene-discovery-progress",
+            serde_json::json!({
+                "phase": "searching",
+                "progress": progress,
+                "detail": genre
+            }),
+        );
         let client = state.client.lock().await;
         let search_result = client
-            .search_artists_by_tag_and_area(genre, &search_name, country.as_deref(), per_genre_limit, 0)
+            .search_artists_by_tag_and_area(
+                genre,
+                &search_name,
+                country.as_deref(),
+                per_genre_limit,
+                0,
+            )
             .await;
         drop(client);
 
@@ -9708,10 +9783,7 @@ pub async fn v2_discover_artists_by_location(
                         .as_ref()
                         .map(|ba| {
                             ba.name.eq_ignore_ascii_case(&search_name)
-                                || area_id
-                                    .as_deref()
-                                    .map(|aid| ba.id == aid)
-                                    .unwrap_or(false)
+                                || area_id.as_deref().map(|aid| ba.id == aid).unwrap_or(false)
                         })
                         .unwrap_or(false);
 
@@ -9733,7 +9805,7 @@ pub async fn v2_discover_artists_by_location(
                         .or_insert_with(|| (artist.name.clone(), 0, 0, Vec::new()));
                     entry.1 += score;
                     entry.2 += 1; // appeared in N genre queries = more relevant
-                    // Merge tags
+                                  // Merge tags
                     for tag in &candidate_tags {
                         if !entry.3.contains(tag) {
                             entry.3.push(tag.clone());
@@ -9773,7 +9845,12 @@ pub async fn v2_discover_artists_by_location(
                     .collect::<Vec<_>>(),
             );
             let multi_genre_bonus = ((genre_hits as i32) - 1) * 15;
-            (mbid, name, candidate_seeds.genres, score + multi_genre_bonus)
+            (
+                mbid,
+                name,
+                candidate_seeds.genres,
+                score + multi_genre_bonus,
+            )
         })
         .collect();
 
@@ -9782,11 +9859,7 @@ pub async fn v2_discover_artists_by_location(
 
     // Apply offset and limit
     let total_candidates = scored.len();
-    let candidates_to_validate: Vec<_> = scored
-        .into_iter()
-        .skip(offset)
-        .take(limit)
-        .collect();
+    let candidates_to_validate: Vec<_> = scored.into_iter().skip(offset).take(limit).collect();
 
     log::info!(
         "[V2] Validating {} candidates against Qobuz (total pool: {})",
@@ -9799,22 +9872,30 @@ pub async fn v2_discover_artists_by_location(
     let mut validated: Vec<LocationCandidate> = Vec::new();
     let total_to_validate = candidates_to_validate.len();
 
-    let _ = app.emit("scene-discovery-progress", serde_json::json!({
-        "phase": "validating",
-        "progress": 40,
-        "detail": format!("{} candidates", total_to_validate)
-    }));
+    let _ = app.emit(
+        "scene-discovery-progress",
+        serde_json::json!({
+            "phase": "validating",
+            "progress": 40,
+            "detail": format!("{} candidates", total_to_validate)
+        }),
+    );
 
     if let Some(ref core_bridge) = bridge_guard {
-        for (validate_idx, (mbid, mb_name, candidate_genres, score)) in candidates_to_validate.iter().enumerate() {
+        for (validate_idx, (mbid, mb_name, candidate_genres, score)) in
+            candidates_to_validate.iter().enumerate()
+        {
             // Progress: Qobuz validation phase = 40-95%
             if validate_idx % 5 == 0 {
                 let progress = 40 + ((validate_idx as f64 / total_to_validate as f64) * 55.0) as u8;
-                let _ = app.emit("scene-discovery-progress", serde_json::json!({
-                    "phase": "validating",
-                    "progress": progress,
-                    "detail": format!("{}/{}", validate_idx, total_to_validate)
-                }));
+                let _ = app.emit(
+                    "scene-discovery-progress",
+                    serde_json::json!({
+                        "phase": "validating",
+                        "progress": progress,
+                        "detail": format!("{}/{}", validate_idx, total_to_validate)
+                    }),
+                );
             }
             let name_normalized =
                 qbz_integrations::musicbrainz::cache::MusicBrainzCache::normalize_name(mb_name);
@@ -9839,12 +9920,7 @@ pub async fn v2_discover_artists_by_location(
                         let image_url = qobuz_artist
                             .image
                             .as_ref()
-                            .and_then(|img| {
-                                img.small
-                                    .as_ref()
-                                    .or(img.thumbnail.as_ref())
-                                    .cloned()
-                            });
+                            .and_then(|img| img.small.as_ref().or(img.thumbnail.as_ref()).cloned());
 
                         let candidate = LocationCandidate {
                             mbid: mbid.clone(),
@@ -9870,21 +9946,20 @@ pub async fn v2_discover_artists_by_location(
                     }
                 }
                 Err(e) => {
-                    log::warn!(
-                        "[V2] Qobuz validation failed for '{}': {}",
-                        mb_name,
-                        e
-                    );
+                    log::warn!("[V2] Qobuz validation failed for '{}': {}", mb_name, e);
                 }
             }
         }
     }
 
-    let _ = app.emit("scene-discovery-progress", serde_json::json!({
-        "phase": "done",
-        "progress": 100,
-        "detail": format!("{} artists", validated.len())
-    }));
+    let _ = app.emit(
+        "scene-discovery-progress",
+        serde_json::json!({
+            "phase": "done",
+            "progress": 100,
+            "detail": format!("{} artists", validated.len())
+        }),
+    );
 
     log::info!(
         "[V2] Scene discovery complete: {} validated artists from {}",
@@ -10664,15 +10739,15 @@ pub async fn v2_show_track_notification(
     }
 
     let body_text = lines.join("\n");
-    let mut notification = PortalNotification::new(&title)
-        .body(Some(body_text.as_str()));
+    let mut notification = PortalNotification::new(&title).body(Some(body_text.as_str()));
 
     if let Some(ref url_str) = artwork_url {
         let url_clone = url_str.clone();
         let prepared = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
             let path = v2_cache_notification_artwork(&url_clone)?;
             v2_prepare_notification_icon_bytes(&path)
-        }).await;
+        })
+        .await;
 
         match prepared {
             Ok(Ok(icon_bytes)) => {
@@ -10690,7 +10765,10 @@ pub async fn v2_show_track_notification(
 
     match NotificationProxy::new().await {
         Ok(proxy) => {
-            if let Err(e) = proxy.add_notification("track-now-playing", notification).await {
+            if let Err(e) = proxy
+                .add_notification("track-now-playing", notification)
+                .await
+            {
                 log::warn!("Could not show notification via XDG portal: {}", e);
             }
         }
@@ -11964,7 +12042,10 @@ pub async fn v2_purchases_get_all(
     let downloaded_ids: HashSet<i64> = downloaded_formats.iter().map(|(tid, _)| *tid).collect();
     let mut format_map: std::collections::HashMap<i64, Vec<u32>> = std::collections::HashMap::new();
     for (track_id, format_id) in &downloaded_formats {
-        format_map.entry(*track_id).or_default().push(*format_id as u32);
+        format_map
+            .entry(*track_id)
+            .or_default()
+            .push(*format_id as u32);
     }
 
     v2_apply_purchase_download_flags(&mut response, &downloaded_ids, &format_map);
@@ -12022,7 +12103,10 @@ pub async fn v2_purchases_get_by_type(
     let downloaded_ids: HashSet<i64> = downloaded_formats.iter().map(|(tid, _)| *tid).collect();
     let mut format_map: std::collections::HashMap<i64, Vec<u32>> = std::collections::HashMap::new();
     for (track_id, format_id) in &downloaded_formats {
-        format_map.entry(*track_id).or_default().push(*format_id as u32);
+        format_map
+            .entry(*track_id)
+            .or_default()
+            .push(*format_id as u32);
     }
 
     if purchaseType == "tracks" {
@@ -12154,7 +12238,10 @@ pub async fn v2_purchases_get_album(
     // Build per-track format lookup: track_id -> Vec<format_id>
     let mut format_map: std::collections::HashMap<i64, Vec<u32>> = std::collections::HashMap::new();
     for (track_id, format_id) in &downloaded_formats {
-        format_map.entry(*track_id).or_default().push(*format_id as u32);
+        format_map
+            .entry(*track_id)
+            .or_default()
+            .push(*format_id as u32);
     }
     let downloaded_ids: HashSet<i64> = downloaded_formats.iter().map(|(tid, _)| *tid).collect();
 
@@ -12235,7 +12322,8 @@ pub async fn v2_purchases_download_track(
     library_state: State<'_, LibraryState>,
 ) -> Result<String, String> {
     let file_path =
-        v2_download_purchase_track_impl(trackId, formatId, &destination, &qualityDir, &app_state).await?;
+        v2_download_purchase_track_impl(trackId, formatId, &destination, &qualityDir, &app_state)
+            .await?;
 
     let guard = library_state.db.lock().await;
     let db = guard.as_ref().ok_or("No active session - please log in")?;
@@ -12270,13 +12358,24 @@ pub async fn v2_purchases_download_album(
 
     let mut failures: Vec<String> = Vec::new();
     for track in tracks {
-        match v2_download_purchase_track_impl(track.id, formatId, &destination, &qualityDir, &app_state).await {
+        match v2_download_purchase_track_impl(
+            track.id,
+            formatId,
+            &destination,
+            &qualityDir,
+            &app_state,
+        )
+        .await
+        {
             Ok(file_path) => {
                 let guard = library_state.db.lock().await;
                 let db = guard.as_ref().ok_or("No active session - please log in")?;
-                if let Err(err) =
-                    db.mark_purchase_downloaded(track.id as i64, Some(albumId.as_str()), &file_path, formatId as i64)
-                {
+                if let Err(err) = db.mark_purchase_downloaded(
+                    track.id as i64,
+                    Some(albumId.as_str()),
+                    &file_path,
+                    formatId as i64,
+                ) {
                     failures.push(format!("track {} registry error: {}", track.id, err));
                 }
             }
@@ -12420,8 +12519,7 @@ pub async fn v2_generate_theme_from_image(
     tokio::task::spawn_blocking(move || {
         let palette = crate::auto_theme::palette::extract_palette(&imagePath)?;
         Ok(crate::auto_theme::generator::generate_theme(
-            &palette,
-            &imagePath,
+            &palette, &imagePath,
         ))
     })
     .await
@@ -12429,13 +12527,13 @@ pub async fn v2_generate_theme_from_image(
 }
 
 #[tauri::command]
-pub async fn v2_generate_theme_from_wallpaper() -> Result<crate::auto_theme::GeneratedTheme, String> {
+pub async fn v2_generate_theme_from_wallpaper() -> Result<crate::auto_theme::GeneratedTheme, String>
+{
     tokio::task::spawn_blocking(|| {
         let wallpaper = crate::auto_theme::system::get_system_wallpaper()?;
         let palette = crate::auto_theme::palette::extract_palette(&wallpaper)?;
         Ok(crate::auto_theme::generator::generate_theme(
-            &palette,
-            &wallpaper,
+            &palette, &wallpaper,
         ))
     })
     .await
@@ -12445,7 +12543,9 @@ pub async fn v2_generate_theme_from_wallpaper() -> Result<crate::auto_theme::Gen
 #[tauri::command]
 pub fn v2_generate_theme_from_system_colors() -> Result<crate::auto_theme::GeneratedTheme, String> {
     let scheme = crate::auto_theme::system::get_system_color_scheme()?;
-    Ok(crate::auto_theme::generator::generate_theme_from_scheme(&scheme))
+    Ok(crate::auto_theme::generator::generate_theme_from_scheme(
+        &scheme,
+    ))
 }
 
 #[tauri::command]
@@ -12458,11 +12558,9 @@ pub fn v2_get_system_color_scheme() -> Result<crate::auto_theme::SystemColorSche
 pub async fn v2_extract_palette(
     imagePath: String,
 ) -> Result<crate::auto_theme::ThemePalette, String> {
-    tokio::task::spawn_blocking(move || {
-        crate::auto_theme::palette::extract_palette(&imagePath)
-    })
-    .await
-    .map_err(|e| format!("Palette extraction task failed: {}", e))?
+    tokio::task::spawn_blocking(move || crate::auto_theme::palette::extract_palette(&imagePath))
+        .await
+        .map_err(|e| format!("Palette extraction task failed: {}", e))?
 }
 
 // ==================== Utility Commands ====================
@@ -12736,22 +12834,25 @@ pub async fn v2_get_discovery_artists(
         let client = musicbrainz.client.lock().await;
         if !client.is_enabled().await {
             log::warn!("[Discovery] MusicBrainz is disabled, returning empty");
-            return Ok(DiscoveryResponse { artists: Vec::new(), primary_tag: String::new() });
+            return Ok(DiscoveryResponse {
+                artists: Vec::new(),
+                primary_tag: String::new(),
+            });
         }
     }
 
     // Step 2: Get seed artist's primary genre tag
     let seed_tags = {
         let client = musicbrainz.client.lock().await;
-        client
-            .get_artist_tags(&seedMbid)
-            .await
-            .unwrap_or_default()
+        client.get_artist_tags(&seedMbid).await.unwrap_or_default()
     };
 
     if seed_tags.is_empty() {
         log::warn!("[Discovery] No tags found for seed artist, returning empty");
-        return Ok(DiscoveryResponse { artists: Vec::new(), primary_tag: String::new() });
+        return Ok(DiscoveryResponse {
+            artists: Vec::new(),
+            primary_tag: String::new(),
+        });
     }
 
     let primary_tag = &seed_tags[0];
@@ -12778,7 +12879,10 @@ pub async fn v2_get_discovery_artists(
     );
 
     if mb_results.artists.is_empty() {
-        return Ok(DiscoveryResponse { artists: Vec::new(), primary_tag: primary_tag.to_string() });
+        return Ok(DiscoveryResponse {
+            artists: Vec::new(),
+            primary_tag: primary_tag.to_string(),
+        });
     }
 
     // Step 4: Build exclusion sets
@@ -12873,8 +12977,8 @@ pub async fn v2_get_discovery_artists(
     {
         use rand::seq::SliceRandom;
         use rand::SeedableRng;
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
         seedMbid.hash(&mut hasher);
@@ -12934,7 +13038,10 @@ pub async fn v2_get_discovery_artists(
         }
     } else {
         log::warn!("[Discovery] CoreBridge not available");
-        return Ok(DiscoveryResponse { artists: Vec::new(), primary_tag: primary_tag.to_string() });
+        return Ok(DiscoveryResponse {
+            artists: Vec::new(),
+            primary_tag: primary_tag.to_string(),
+        });
     }
 
     // Step 7: If not enough results with primary tag, try secondary tag
@@ -12963,10 +13070,8 @@ pub async fn v2_get_discovery_artists(
             let client = musicbrainz.client.lock().await;
             client.search_artists_by_tag(secondary_tag, 30).await
         };
-        if let Ok(secondary_results) = secondary_search
-        {
-            let existing_mbids: HashSet<String> =
-                results.iter().map(|r| r.mbid.clone()).collect();
+        if let Ok(secondary_results) = secondary_search {
+            let existing_mbids: HashSet<String> = results.iter().map(|r| r.mbid.clone()).collect();
 
             // Filter and shuffle secondary candidates too
             let mut secondary_candidates: Vec<(String, String)> = Vec::new();
@@ -12993,8 +13098,8 @@ pub async fn v2_get_discovery_artists(
             {
                 use rand::seq::SliceRandom;
                 use rand::SeedableRng;
-                use std::hash::{Hash, Hasher};
                 use std::collections::hash_map::DefaultHasher;
+                use std::hash::{Hash, Hasher};
 
                 let mut hasher = DefaultHasher::new();
                 seedMbid.hash(&mut hasher);
@@ -13010,26 +13115,25 @@ pub async fn v2_get_discovery_artists(
                         break;
                     }
 
-                    let qobuz_artist =
-                        match core_bridge.search_artists(name, 1, 0, None).await {
-                            Ok(sr) => {
-                                if let Some(qa) = sr.items.first() {
-                                    let qobuz_norm = normalize_artist_name(&qa.name);
-                                    let cand_norm = normalize_artist_name(name);
-                                    if qobuz_norm == cand_norm
-                                        && !local_known_qobuz_ids.contains(&qa.id)
-                                        && !blacklist_state.is_blacklisted(qa.id)
-                                    {
-                                        Some((qa.id, qa.name.clone()))
-                                    } else {
-                                        None
-                                    }
+                    let qobuz_artist = match core_bridge.search_artists(name, 1, 0, None).await {
+                        Ok(sr) => {
+                            if let Some(qa) = sr.items.first() {
+                                let qobuz_norm = normalize_artist_name(&qa.name);
+                                let cand_norm = normalize_artist_name(name);
+                                if qobuz_norm == cand_norm
+                                    && !local_known_qobuz_ids.contains(&qa.id)
+                                    && !blacklist_state.is_blacklisted(qa.id)
+                                {
+                                    Some((qa.id, qa.name.clone()))
                                 } else {
                                     None
                                 }
+                            } else {
+                                None
                             }
-                            Err(_) => None,
-                        };
+                        }
+                        Err(_) => None,
+                    };
 
                     if let Some((qobuz_id, qobuz_name)) = qobuz_artist {
                         results.push(DiscoveryArtist {
@@ -13047,7 +13151,10 @@ pub async fn v2_get_discovery_artists(
     }
 
     log::info!("[Discovery] Returning {} discovery artists", results.len());
-    Ok(DiscoveryResponse { artists: results, primary_tag: primary_tag.to_string() })
+    Ok(DiscoveryResponse {
+        artists: results,
+        primary_tag: primary_tag.to_string(),
+    })
 }
 
 #[tauri::command]

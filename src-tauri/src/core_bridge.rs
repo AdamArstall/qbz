@@ -586,6 +586,10 @@ impl CoreBridge {
     pub fn player(&self) -> Arc<Player> {
         self.core.player()
     }
+
+    pub fn has_loaded_audio(&self) -> bool {
+        self.core.player().has_loaded_audio()
+    }
 }
 
 /// State wrapper for Tauri's managed state

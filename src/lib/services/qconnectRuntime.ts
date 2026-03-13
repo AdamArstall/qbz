@@ -194,6 +194,30 @@ export function isQconnectPeerRendererActive(
   return activeRendererId !== localRendererId;
 }
 
+export function resolveQconnectPlayNextAuthoritativeTrackId(params: {
+  sessionSnapshot: QconnectSessionSnapshot | null | undefined;
+  localCurrentTrackId: number | null | undefined;
+}): number | null {
+  const { sessionSnapshot, localCurrentTrackId } = params;
+
+  if (
+    typeof localCurrentTrackId !== 'number' ||
+    !Number.isFinite(localCurrentTrackId) ||
+    localCurrentTrackId <= 0
+  ) {
+    return null;
+  }
+
+  const activeRendererId = sessionSnapshot?.active_renderer_id ?? null;
+  const localRendererId = sessionSnapshot?.local_renderer_id ?? null;
+
+  if (activeRendererId == null || localRendererId == null || activeRendererId < 0) {
+    return null;
+  }
+
+  return isQconnectPeerRendererActive(sessionSnapshot) ? null : localCurrentTrackId;
+}
+
 export function evaluateQconnectSessionPersistence(
   remoteModeActive: boolean,
   skipLogged: boolean

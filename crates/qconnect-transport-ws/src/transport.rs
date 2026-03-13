@@ -619,7 +619,10 @@ fn handle_incoming_binary(
             match decode_renderer_server_commands(&inner_payload) {
                 Ok(commands) => {
                     if !commands.is_empty() {
-                        log::info!("[QConnect/Decode] Renderer commands decoded: {}", commands.len());
+                        log::info!(
+                            "[QConnect/Decode] Renderer commands decoded: {}",
+                            commands.len()
+                        );
                     }
                     for command in commands {
                         emit(

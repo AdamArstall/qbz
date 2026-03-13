@@ -629,7 +629,10 @@ mod tests {
                 return;
             }
             Err(e) => {
-                eprintln!("Skipping: cannot load credentials in this environment: {}", e);
+                eprintln!(
+                    "Skipping: cannot load credentials in this environment: {}",
+                    e
+                );
                 let _ = clear_qobuz_credentials();
                 return;
             }

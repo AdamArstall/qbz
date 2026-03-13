@@ -55,9 +55,7 @@ impl QueueEventType {
             Self::SrvrCtrlAddRenderer => "MESSAGE_TYPE_SRVR_CTRL_ADD_RENDERER",
             Self::SrvrCtrlUpdateRenderer => "MESSAGE_TYPE_SRVR_CTRL_UPDATE_RENDERER",
             Self::SrvrCtrlRemoveRenderer => "MESSAGE_TYPE_SRVR_CTRL_REMOVE_RENDERER",
-            Self::SrvrCtrlActiveRendererChanged => {
-                "MESSAGE_TYPE_SRVR_CTRL_ACTIVE_RENDERER_CHANGED"
-            }
+            Self::SrvrCtrlActiveRendererChanged => "MESSAGE_TYPE_SRVR_CTRL_ACTIVE_RENDERER_CHANGED",
             Self::SrvrCtrlVolumeChanged => "MESSAGE_TYPE_SRVR_CTRL_VOLUME_CHANGED",
             Self::SrvrCtrlLoopModeSet => "MESSAGE_TYPE_SRVR_CTRL_LOOP_MODE_SET",
             Self::SrvrCtrlVolumeMuted => "MESSAGE_TYPE_SRVR_CTRL_VOLUME_MUTED",

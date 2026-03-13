@@ -2629,8 +2629,17 @@ async fn align_corebridge_queue_cursor(bridge: &CoreBridge, track_id: u64) -> Re
     Ok(())
 }
 
+fn should_reload_remote_track(
+    playback_state: &qbz_player::PlaybackState,
+    has_loaded_audio: bool,
+    track_id: u64,
+) -> bool {
+    playback_state.track_id != track_id || !has_loaded_audio
+}
+
 async fn ensure_remote_track_loaded(bridge: &CoreBridge, track_id: u64) -> Result<(), String> {
-    if bridge.get_playback_state().track_id == track_id {
+    let playback_state = bridge.get_playback_state();
+    if !should_reload_remote_track(&playback_state, bridge.has_loaded_audio(), track_id) {
         return Ok(());
     }
 
@@ -4257,6 +4266,33 @@ mod tests {
                 .map(|item| (item.track_id, item.queue_item_id)),
             Some((25584411, 3)),
         );
+    }
+
+    #[test]
+    fn reloads_remote_track_when_same_track_id_has_no_loaded_audio() {
+        let playback_state = qbz_player::PlaybackState {
+            is_playing: false,
+            position: 0,
+            duration: 279,
+            track_id: 193849747,
+            volume: 1.0,
+        };
+
+        assert!(super::should_reload_remote_track(
+            &playback_state,
+            false,
+            193849747,
+        ));
+        assert!(!super::should_reload_remote_track(
+            &playback_state,
+            true,
+            193849747,
+        ));
+        assert!(super::should_reload_remote_track(
+            &playback_state,
+            true,
+            126886862,
+        ));
     }
 
     #[test]
