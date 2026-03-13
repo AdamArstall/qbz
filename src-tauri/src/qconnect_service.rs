@@ -473,6 +473,15 @@ fn is_peer_renderer_active(session: &QconnectSessionState) -> bool {
     }
 }
 
+fn is_local_renderer_active(session: &QconnectSessionState) -> bool {
+    match (session.active_renderer_id, session.local_renderer_id) {
+        (Some(active_renderer_id), Some(local_renderer_id)) => {
+            active_renderer_id == local_renderer_id
+        }
+        _ => false,
+    }
+}
+
 fn sync_session_renderer_active_flags(state: &mut QconnectRemoteSyncState) {
     for (renderer_id, renderer_state) in &mut state.session_renderer_states {
         renderer_state.active = state
@@ -1546,6 +1555,16 @@ impl QconnectServiceState {
             )
         } else {
             (None, None)
+        }
+    }
+
+    async fn is_local_renderer_active(&self) -> bool {
+        let guard = self.inner.lock().await;
+        if let Some(runtime) = &guard.runtime {
+            let sync_state = runtime.sync_state.lock().await;
+            is_local_renderer_active(&sync_state.session)
+        } else {
+            false
         }
     }
 
@@ -3430,8 +3449,12 @@ pub async fn v2_qconnect_report_playback_state(
     }
 
     let queue_version = service.get_queue_version().await;
-    let should_report_queue_item_ids =
-        requested_current_qid.is_some() || queue_lookup_report_strategy.is_some();
+    let should_report_queue_item_ids = should_report_queue_item_ids_for_renderer_state(
+        requested_current_qid,
+        queue_lookup_report_strategy,
+        service.is_local_renderer_active().await,
+        resolved_current_qid,
+    );
 
     let should_skip_due_to_stale_renderer = should_skip_renderer_report_due_to_stale_snapshot(
         current_track_id,
@@ -3612,6 +3635,17 @@ fn determine_queue_lookup_report_strategy(
     }
 
     None
+}
+
+fn should_report_queue_item_ids_for_renderer_state(
+    requested_current_qid: Option<i32>,
+    queue_lookup_report_strategy: Option<&'static str>,
+    local_renderer_active: bool,
+    resolved_current_qid: Option<i32>,
+) -> bool {
+    requested_current_qid.is_some()
+        || queue_lookup_report_strategy.is_some()
+        || (local_renderer_active && resolved_current_qid.is_some())
 }
 
 /// Report volume change to QConnect server.
@@ -4106,6 +4140,26 @@ mod tests {
             ),
             None,
         );
+    }
+
+    #[test]
+    fn keeps_reporting_queue_item_ids_while_local_renderer_is_active() {
+        assert!(super::should_report_queue_item_ids_for_renderer_state(
+            None,
+            None,
+            true,
+            Some(12),
+        ));
+    }
+
+    #[test]
+    fn does_not_force_queue_item_ids_for_peer_renderer_without_explicit_lookup() {
+        assert!(!super::should_report_queue_item_ids_for_renderer_state(
+            None,
+            None,
+            false,
+            Some(12),
+        ));
     }
 
     #[test]
