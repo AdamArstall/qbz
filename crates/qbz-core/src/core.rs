@@ -158,6 +158,13 @@ impl<A: FrontendAdapter + Send + Sync + 'static> QbzCore<A> {
         self.emit(CoreEvent::ShuffleChanged { enabled }).await;
     }
 
+    /// Set shuffle mode using an authoritative order.
+    pub async fn set_shuffle_with_order(&self, enabled: bool, shuffle_order: Option<Vec<usize>>) {
+        let queue = self.queue.write().await;
+        queue.set_shuffle_with_order(enabled, shuffle_order);
+        self.emit(CoreEvent::ShuffleChanged { enabled }).await;
+    }
+
     /// Toggle shuffle and return new state
     pub async fn toggle_shuffle(&self) -> bool {
         let queue = self.queue.write().await;

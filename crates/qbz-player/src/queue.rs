@@ -590,6 +590,47 @@ impl QueueManager {
         }
     }
 
+    /// Set shuffle mode using an authoritative order produced elsewhere.
+    /// Used by QConnect so the local queue follows the remote session order
+    /// instead of generating a second independent shuffle.
+    pub fn set_shuffle_with_order(&self, enabled: bool, shuffle_order: Option<Vec<usize>>) {
+        let mut state = self.state.lock().unwrap();
+        state.shuffle = enabled;
+
+        if !enabled {
+            state.shuffle_order.clear();
+            state.shuffle_position = 0;
+            return;
+        }
+
+        if let Some(order) =
+            shuffle_order.filter(|order| Self::is_valid_shuffle_order(order, state.tracks.len()))
+        {
+            state.shuffle_order = order;
+            if let Some(curr_idx) = state.current_index {
+                if let Some(pos) = state.shuffle_order.iter().position(|&idx| idx == curr_idx) {
+                    state.shuffle_position = pos;
+                } else {
+                    state.shuffle_position = 0;
+                }
+            } else {
+                state.shuffle_position = 0;
+            }
+            return;
+        }
+
+        Self::regenerate_shuffle_order_internal(&mut state);
+
+        if let Some(curr_idx) = state.current_index {
+            if let Some(pos) = state.shuffle_order.iter().position(|&idx| idx == curr_idx) {
+                if pos != 0 {
+                    state.shuffle_order.swap(0, pos);
+                }
+                state.shuffle_position = 0;
+            }
+        }
+    }
+
     /// Get shuffle status
     pub fn is_shuffle(&self) -> bool {
         self.state.lock().unwrap().shuffle
@@ -751,6 +792,22 @@ impl QueueManager {
         } else {
             state.shuffle_position = 0;
         }
+    }
+
+    fn is_valid_shuffle_order(order: &[usize], track_count: usize) -> bool {
+        if order.len() != track_count {
+            return false;
+        }
+
+        let mut seen = vec![false; track_count];
+        for &idx in order {
+            if idx >= track_count || seen[idx] {
+                return false;
+            }
+            seen[idx] = true;
+        }
+
+        true
     }
 }
 
@@ -1000,5 +1057,43 @@ mod tests {
         let state = queue.get_state();
         assert_eq!(state.total_tracks, 11);
         assert_eq!(state.upcoming.len(), 10);
+    }
+
+    #[test]
+    fn test_set_shuffle_with_order_uses_authoritative_order() {
+        let queue = QueueManager::new();
+        for i in 1..=5 {
+            queue.add_track(create_test_track(i));
+        }
+
+        queue.play_index(2);
+        queue.set_shuffle_with_order(true, Some(vec![2, 4, 1, 3, 0]));
+
+        let state = queue.get_state();
+        assert!(state.shuffle);
+        assert_eq!(
+            state
+                .upcoming
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            vec![5, 2, 4, 1]
+        );
+    }
+
+    #[test]
+    fn test_set_shuffle_with_order_falls_back_when_order_is_invalid() {
+        let queue = QueueManager::new();
+        for i in 1..=4 {
+            queue.add_track(create_test_track(i));
+        }
+
+        queue.play_index(1);
+        queue.set_shuffle_with_order(true, Some(vec![1, 1, 2, 3]));
+
+        let state = queue.state.lock().unwrap();
+        assert!(state.shuffle);
+        assert_eq!(state.shuffle_order.len(), 4);
+        assert_eq!(state.shuffle_order[0], 1);
     }
 }

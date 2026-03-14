@@ -137,6 +137,13 @@ impl CoreBridge {
         self.core.set_shuffle(enabled).await
     }
 
+    /// Set shuffle mode using an authoritative order.
+    pub async fn set_shuffle_with_order(&self, enabled: bool, shuffle_order: Option<Vec<usize>>) {
+        self.core
+            .set_shuffle_with_order(enabled, shuffle_order)
+            .await
+    }
+
     /// Clear the queue
     pub async fn clear_queue(&self) {
         self.core.clear_queue().await

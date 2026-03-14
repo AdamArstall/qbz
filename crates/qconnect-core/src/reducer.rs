@@ -400,7 +400,7 @@ fn insertion_index(items: &[QueueItem], insert_after: Option<u64>) -> usize {
         .unwrap_or(items.len())
 }
 
-fn build_shuffle_order(count: usize, seed: u64, pivot_index: Option<usize>) -> Vec<usize> {
+pub fn build_shuffle_order(count: usize, seed: u64, pivot_index: Option<usize>) -> Vec<usize> {
     let mut order: Vec<usize> = (0..count).collect();
     if count <= 1 {
         return order;

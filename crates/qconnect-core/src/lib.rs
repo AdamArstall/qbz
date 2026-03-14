@@ -15,5 +15,5 @@ pub use admission::{
 };
 pub use pending::{PendingActionError, PendingActionSlot, PendingCorrelation, PendingQueueAction};
 pub use queue::{QConnectQueueState, QueueEvent, QueueItem, QueueVersion};
-pub use reducer::{apply_event, ReducerOutcome};
+pub use reducer::{apply_event, build_shuffle_order, ReducerOutcome};
 pub use renderer::{apply_renderer_command, QConnectRendererState, RendererCommand};
