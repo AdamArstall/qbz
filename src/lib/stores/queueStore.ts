@@ -58,6 +58,8 @@ let queue: QueueTrack[] = [];
 let queueTotalTracks = 0;
 let isShuffle = false;
 let repeatMode: RepeatMode = 'off';
+let pendingRepeatMode: RepeatMode | null = null;
+let hasAuthoritativeRepeatSnapshot = false;
 
 // Local library track IDs in current queue (for distinguishing from Qobuz tracks)
 let localTrackIds = new Set<number>();
@@ -142,6 +144,14 @@ function normalizeRepeatMode(value: string): RepeatMode {
 }
 
 async function resolveAuthoritativeRepeatMode(): Promise<RepeatMode> {
+  if (pendingRepeatMode) {
+    return pendingRepeatMode;
+  }
+
+  if (hasAuthoritativeRepeatSnapshot) {
+    return repeatMode;
+  }
+
   try {
     const queueState = await invoke<BackendQueueState>('v2_get_queue_state');
     const authoritativeRepeatMode = normalizeRepeatMode(queueState.repeat);
@@ -155,6 +165,7 @@ async function resolveAuthoritativeRepeatMode(): Promise<RepeatMode> {
       await applyBackendQueueState(queueState);
     }
 
+    hasAuthoritativeRepeatSnapshot = true;
     return authoritativeRepeatMode;
   } catch (err) {
     console.warn('[Queue] Failed to fetch authoritative repeat mode before toggle:', err);
@@ -191,6 +202,10 @@ async function applyBackendQueueState(queueState: BackendQueueState): Promise<vo
   queueTotalTracks = queueState.total_tracks;
   isShuffle = queueState.shuffle;
   repeatMode = normalizeRepeatMode(queueState.repeat);
+  hasAuthoritativeRepeatSnapshot = true;
+  if (pendingRepeatMode === repeatMode) {
+    pendingRepeatMode = null;
+  }
   notifyListeners();
 }
 
@@ -281,9 +296,11 @@ export async function toggleRepeat(): Promise<{ success: boolean; mode: RepeatMo
 
   try {
     await invoke('v2_set_repeat_mode', { mode: v2Mode });
+    pendingRepeatMode = nextMode;
     return { success: true, mode: nextMode };
   } catch (err) {
     console.error('Failed to set repeat:', err);
+    pendingRepeatMode = null;
     return { success: false, mode: repeatMode };
   }
 }
@@ -475,7 +492,10 @@ export function reset(): void {
   queueTotalTracks = 0;
   isShuffle = false;
   repeatMode = 'off';
+  pendingRepeatMode = null;
+  hasAuthoritativeRepeatSnapshot = false;
   localTrackIds = new Set();
+  tracksWithLocalCopies = new Set();
   notifyListeners();
 }
 
@@ -512,6 +532,10 @@ export async function startQueueEventListener(): Promise<void> {
     const repeatChangedUnlisten = await listen<string>('queue:repeat-changed', (event) => {
       console.log('[Queue] Received queue:repeat-changed event:', event.payload);
       repeatMode = normalizeRepeatMode(event.payload);
+      hasAuthoritativeRepeatSnapshot = true;
+      if (pendingRepeatMode === repeatMode) {
+        pendingRepeatMode = null;
+      }
       notifyListeners();
     });
 
@@ -519,6 +543,10 @@ export async function startQueueEventListener(): Promise<void> {
       console.log('[Queue] Received queue:state event:', event.payload);
       isShuffle = event.payload.shuffle;
       repeatMode = normalizeRepeatMode(event.payload.repeat);
+      hasAuthoritativeRepeatSnapshot = true;
+      if (pendingRepeatMode === repeatMode) {
+        pendingRepeatMode = null;
+      }
       notifyListeners();
       syncQueueState().catch(err =>
         console.error('[Queue] Failed to sync queue after queue:state event:', err)

@@ -32,6 +32,8 @@ describe('queueStore', () => {
     // Reset store state between tests
     stopQueueEventListener();
     reset();
+    mockedInvoke.mockReset();
+    mockedListen.mockReset();
     vi.clearAllMocks();
   });
 
@@ -280,6 +282,40 @@ describe('queueStore', () => {
       result = await toggleRepeat();
       expect(result.mode).toBe('off');
       expect(getRepeatMode()).toBe('one');
+    });
+
+    it('should allow rapid consecutive repeat toggles before remote confirmation arrives', async () => {
+      mockedInvoke.mockImplementation(async (command, payload) => {
+        if (command === 'v2_get_queue_state') {
+          return {
+            current_track: null,
+            current_index: null,
+            upcoming: [],
+            history: [],
+            shuffle: false,
+            repeat: 'Off',
+            total_tracks: 0
+          };
+        }
+
+        if (command === 'v2_set_repeat_mode') {
+          return undefined;
+        }
+
+        throw new Error(`Unexpected invoke: ${String(command)} ${JSON.stringify(payload)}`);
+      });
+
+      await syncQueueState();
+      mockedInvoke.mockClear();
+
+      const first = await toggleRepeat();
+      const second = await toggleRepeat();
+
+      expect(first).toEqual({ success: true, mode: 'all' });
+      expect(second).toEqual({ success: true, mode: 'one' });
+      expect(mockedInvoke).toHaveBeenNthCalledWith(1, 'v2_set_repeat_mode', { mode: 'All' });
+      expect(mockedInvoke).toHaveBeenNthCalledWith(2, 'v2_set_repeat_mode', { mode: 'One' });
+      expect(mockedInvoke).toHaveBeenCalledTimes(2);
     });
 
     it('should not change mode on error', async () => {
