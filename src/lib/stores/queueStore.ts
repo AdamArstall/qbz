@@ -141,6 +141,27 @@ function normalizeRepeatMode(value: string): RepeatMode {
   return 'off';
 }
 
+async function resolveAuthoritativeRepeatMode(): Promise<RepeatMode> {
+  try {
+    const queueState = await invoke<BackendQueueState>('v2_get_queue_state');
+    const authoritativeRepeatMode = normalizeRepeatMode(queueState.repeat);
+
+    if (
+      authoritativeRepeatMode !== repeatMode ||
+      queueState.shuffle !== isShuffle ||
+      queueState.total_tracks !== queueTotalTracks ||
+      queueState.upcoming.length !== queue.length
+    ) {
+      await applyBackendQueueState(queueState);
+    }
+
+    return authoritativeRepeatMode;
+  } catch (err) {
+    console.warn('[Queue] Failed to fetch authoritative repeat mode before toggle:', err);
+    return repeatMode;
+  }
+}
+
 async function applyBackendQueueState(queueState: BackendQueueState): Promise<void> {
   const trackIds = queueState.upcoming.map(track => track.id);
 
@@ -253,7 +274,8 @@ export async function toggleShuffle(): Promise<{ success: boolean; enabled: bool
  * Toggle repeat mode (off -> all -> one -> off) (V2)
  */
 export async function toggleRepeat(): Promise<{ success: boolean; mode: RepeatMode }> {
-  const nextMode: RepeatMode = repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off';
+  const currentMode = await resolveAuthoritativeRepeatMode();
+  const nextMode: RepeatMode = currentMode === 'off' ? 'all' : currentMode === 'all' ? 'one' : 'off';
   // V2 expects capitalized repeat mode: 'Off' | 'All' | 'One'
   const v2Mode = nextMode.charAt(0).toUpperCase() + nextMode.slice(1);
 

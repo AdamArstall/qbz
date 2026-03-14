@@ -221,7 +221,16 @@ describe('queueStore', () => {
 
   describe('toggleRepeat', () => {
     it('should request the next repeat mode without mutating local state optimistically', async () => {
-      mockedInvoke.mockResolvedValue(undefined);
+      mockedInvoke.mockResolvedValueOnce({
+        current_track: null,
+        current_index: null,
+        upcoming: [],
+        history: [],
+        shuffle: false,
+        repeat: 'Off',
+        total_tracks: 0
+      });
+      mockedInvoke.mockResolvedValueOnce(undefined);
 
       // off -> all
       let result = await toggleRepeat();
@@ -240,6 +249,16 @@ describe('queueStore', () => {
       eventHandlers.get('queue:repeat-changed')?.({ payload: 'all' });
       await Promise.resolve();
 
+      mockedInvoke.mockResolvedValueOnce({
+        current_track: null,
+        current_index: null,
+        upcoming: [],
+        history: [],
+        shuffle: false,
+        repeat: 'All',
+        total_tracks: 0
+      });
+      mockedInvoke.mockResolvedValueOnce(undefined);
       result = await toggleRepeat();
       expect(result.mode).toBe('one');
       expect(getRepeatMode()).toBe('all');
@@ -248,18 +267,57 @@ describe('queueStore', () => {
       eventHandlers.get('queue:repeat-changed')?.({ payload: 'one' });
       await Promise.resolve();
 
+      mockedInvoke.mockResolvedValueOnce({
+        current_track: null,
+        current_index: null,
+        upcoming: [],
+        history: [],
+        shuffle: false,
+        repeat: 'One',
+        total_tracks: 0
+      });
+      mockedInvoke.mockResolvedValueOnce(undefined);
       result = await toggleRepeat();
       expect(result.mode).toBe('off');
       expect(getRepeatMode()).toBe('one');
     });
 
     it('should not change mode on error', async () => {
-      mockedInvoke.mockRejectedValueOnce(new Error('Failed'));
+      mockedInvoke.mockRejectedValue(new Error('Failed'));
 
       const result = await toggleRepeat();
 
       expect(result).toEqual({ success: false, mode: 'off' });
       expect(getRepeatMode()).toBe('off');
+    });
+
+    it('should derive the next repeat mode from authoritative backend state when local state is stale', async () => {
+      mockedInvoke.mockImplementation(async (command) => {
+        if (command === 'v2_get_queue_state') {
+          return {
+            current_track: null,
+            current_index: null,
+            upcoming: [],
+            history: [],
+            shuffle: false,
+            repeat: 'One',
+            total_tracks: 0
+          };
+        }
+
+        if (command === 'v2_set_repeat_mode') {
+          return undefined;
+        }
+
+        throw new Error(`Unexpected invoke: ${String(command)}`);
+      });
+
+      const result = await toggleRepeat();
+
+      expect(result).toEqual({ success: true, mode: 'off' });
+      expect(getRepeatMode()).toBe('one');
+      expect(mockedInvoke).toHaveBeenNthCalledWith(1, 'v2_get_queue_state');
+      expect(mockedInvoke).toHaveBeenNthCalledWith(2, 'v2_set_repeat_mode', { mode: 'Off' });
     });
   });
 

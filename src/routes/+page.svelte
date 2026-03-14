@@ -3392,10 +3392,14 @@
       console.log('[Session] Session persistence disabled, skipping restore');
     }
     try {
-      await refreshQobuzConnectStatus();
-      const qconnectRemoteModeActive = isQconnectRemoteModeActive();
+      await refreshQobuzConnectRuntimeState();
+      const qconnectRuntimeActive = Boolean(qobuzConnectStatus.running || isQconnectRemoteModeActive());
 
-      if (sessionPersistEnabled && !qconnectRemoteModeActive) {
+      if (qconnectRuntimeActive) {
+        await syncQueueState();
+      }
+
+      if (sessionPersistEnabled && !qconnectRuntimeActive) {
         const session = await loadSessionState();
 
         // Restore queue + track (visual only — paused at 0:00)
@@ -3463,7 +3467,7 @@
         if (session) {
           restoreLastView(session);
         }
-      } else if (qconnectRemoteModeActive) {
+      } else if (qconnectRuntimeActive) {
         console.log('[Session] Skipping local session restore while Qobuz Connect remote mode is active');
       }
     } catch (err) {
