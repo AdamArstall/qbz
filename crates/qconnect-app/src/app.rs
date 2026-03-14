@@ -130,6 +130,10 @@ where
                 command.command_type,
                 QueueCommandType::CtrlSrvrSetPlayerState
             ),
+            is_set_loop_mode_action: matches!(
+                command.command_type,
+                QueueCommandType::CtrlSrvrSetLoopMode
+            ),
             is_set_active_renderer_action,
             expected_active_renderer_id: if is_set_active_renderer_action {
                 pending_active_renderer_id_from_payload(&command.payload)
@@ -881,6 +885,15 @@ fn session_management_event_completes_pending_action(
         return true;
     }
 
+    if pending.is_set_loop_mode_action && matches!(event_type, QueueEventType::SrvrCtrlLoopModeSet)
+    {
+        // Loop mode changes come back as session-management events without a
+        // stable action_uuid ack. Treat the first loop-mode-set echo as the
+        // completion signal so repeat toggles are not blocked behind the
+        // generic 10s pending timeout.
+        return true;
+    }
+
     if !pending.is_set_active_renderer_action {
         return false;
     }
@@ -1268,6 +1281,56 @@ mod tests {
             matches!(
                 event,
                 QconnectAppEvent::PendingActionCompleted { uuid } if uuid == &pending_uuid
+            )
+        }));
+    }
+
+    #[tokio::test]
+    async fn loop_mode_set_without_action_uuid_completes_matching_pending_action() {
+        let (app, sink, _transport, _events_rx) = build_connected_app().await;
+        let command = app
+            .build_queue_command(
+                QueueCommandType::CtrlSrvrSetLoopMode,
+                json!({ "loop_mode": 3 }),
+            )
+            .await;
+        let pending_uuid = app
+            .send_queue_command(command)
+            .await
+            .expect("send set-loop-mode command");
+
+        app.apply_server_event(QueueServerEvent {
+            event_type: QueueEventType::SrvrCtrlLoopModeSet,
+            action_uuid: None,
+            queue_version: Some(QueueVersion::new(1, 1)),
+            payload: json!({ "loop_mode": 3 }),
+        })
+        .await
+        .expect("apply loop-mode-set event without action uuid");
+
+        let second_command = app
+            .build_queue_command(
+                QueueCommandType::CtrlSrvrSetLoopMode,
+                json!({ "loop_mode": 2 }),
+            )
+            .await;
+
+        app.send_queue_command(second_command)
+            .await
+            .expect("loop-mode-set event should clear pending action");
+
+        let events = sink.snapshot().await;
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                QconnectAppEvent::PendingActionCompleted { uuid } if uuid == &pending_uuid
+            )
+        }));
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                QconnectAppEvent::SessionManagementEvent { message_type, .. }
+                if message_type == "MESSAGE_TYPE_SRVR_CTRL_LOOP_MODE_SET"
             )
         }));
     }
