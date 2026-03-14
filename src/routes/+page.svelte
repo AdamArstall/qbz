@@ -4260,8 +4260,8 @@
 
     // Gapless: provide callback to get next track ID for pre-queuing
     setGaplessGetNextTrackId(() => {
-      // Disable gapless pre-queuing during QConnect: the server controls track transitions.
-      if (isQobuzConnectConnected) return null;
+      // Only suppress local gapless when a peer renderer owns playback.
+      if (qconnectSuppressLocalPlaybackAutomation) return null;
       try {
         const queueState = getQueueState();
         if (queueState.queue.length > 0) {
@@ -4287,7 +4287,7 @@
 
     // Gapless: handle transition when backend switches to pre-queued track
     setOnGaplessTransition(async (trackId: number) => {
-      if (isQobuzConnectConnected) return;
+      if (qconnectSuppressLocalPlaybackAutomation) return;
       console.log('[Gapless] Handling transition to track', trackId);
       // Advance the queue to match backend state
       const advanced = await nextTrack();
