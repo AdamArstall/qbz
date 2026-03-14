@@ -6168,10 +6168,12 @@ async fn apply_qconnect_shuffle_mode(
 }
 
 fn qconnect_loop_mode_from_repeat_mode(mode: RepeatMode) -> i32 {
+    // QConnect protocol loop mode values:
+    // 1 = off, 2 = repeat one, 3 = repeat all.
     match mode {
         RepeatMode::Off => 1,
-        RepeatMode::All => 2,
-        RepeatMode::One => 3,
+        RepeatMode::All => 3,
+        RepeatMode::One => 2,
     }
 }
 
@@ -6222,8 +6224,8 @@ mod tests {
     #[test]
     fn maps_repeat_mode_to_qconnect_loop_mode() {
         assert_eq!(qconnect_loop_mode_from_repeat_mode(RepeatMode::Off), 1);
-        assert_eq!(qconnect_loop_mode_from_repeat_mode(RepeatMode::All), 2);
-        assert_eq!(qconnect_loop_mode_from_repeat_mode(RepeatMode::One), 3);
+        assert_eq!(qconnect_loop_mode_from_repeat_mode(RepeatMode::All), 3);
+        assert_eq!(qconnect_loop_mode_from_repeat_mode(RepeatMode::One), 2);
     }
 
     #[test]

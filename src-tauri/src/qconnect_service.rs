@@ -402,10 +402,12 @@ fn qconnect_now_ms() -> u64 {
 }
 
 fn qconnect_repeat_mode_from_loop_mode(loop_mode: i32) -> Option<RepeatMode> {
+    // QConnect protocol loop mode values:
+    // 1 = off, 2 = repeat one, 3 = repeat all.
     match loop_mode {
         0 | 1 => Some(RepeatMode::Off),
-        2 => Some(RepeatMode::All),
-        3 => Some(RepeatMode::One),
+        2 => Some(RepeatMode::One),
+        3 => Some(RepeatMode::All),
         _ => None,
     }
 }
@@ -4718,11 +4720,11 @@ mod tests {
         );
         assert_eq!(
             super::qconnect_repeat_mode_from_loop_mode(2),
-            Some(RepeatMode::All)
+            Some(RepeatMode::One)
         );
         assert_eq!(
             super::qconnect_repeat_mode_from_loop_mode(3),
-            Some(RepeatMode::One)
+            Some(RepeatMode::All)
         );
         assert_eq!(super::qconnect_repeat_mode_from_loop_mode(99), None);
     }
