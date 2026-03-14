@@ -194,6 +194,13 @@ export function isQconnectPeerRendererActive(
   return activeRendererId !== localRendererId;
 }
 
+export function shouldQconnectSuppressLocalPlaybackAutomation(
+  connected: boolean,
+  sessionSnapshot: QconnectSessionSnapshot | null | undefined
+): boolean {
+  return connected && isQconnectPeerRendererActive(sessionSnapshot);
+}
+
 export function resolveQconnectPlayNextAuthoritativeTrackId(params: {
   sessionSnapshot: QconnectSessionSnapshot | null | undefined;
   localCurrentTrackId: number | null | undefined;

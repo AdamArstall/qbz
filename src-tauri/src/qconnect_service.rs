@@ -2463,6 +2463,10 @@ async fn apply_renderer_command_to_corebridge(
             ..
         } => {
             let resolved_playing_state = renderer_state.playing_state.or(*playing_state);
+            let target_position_secs = renderer_state
+                .current_position_ms
+                .or(*current_position_ms)
+                .map(|position_ms| position_ms / 1000);
             let mut projection_renderer_state = renderer_state.clone();
             if projection_renderer_state.current_track.is_none() {
                 projection_renderer_state.current_track = current_track.clone();
@@ -2471,6 +2475,7 @@ async fn apply_renderer_command_to_corebridge(
                 projection_renderer_state.next_track = next_track.clone();
             }
             let resolved_current_track = projection_renderer_state.current_track.as_ref();
+            let mut reloaded_for_restart = false;
             if let Some(current_track) = resolved_current_track {
                 let queue_state = {
                     let state = sync_state.lock().await;
@@ -2500,13 +2505,33 @@ async fn apply_renderer_command_to_corebridge(
                     resolved_playing_state,
                     Some(PLAYING_STATE_PLAYING | PLAYING_STATE_PAUSED)
                 ) {
-                    if let Err(err) =
-                        ensure_remote_track_loaded(bridge, current_track.track_id).await
-                    {
-                        log::warn!(
-                            "[QConnect] Failed to load remote track {}: {err}",
-                            current_track.track_id
-                        );
+                    if let Some(target_position_secs) = target_position_secs {
+                        let playback_state = bridge.get_playback_state();
+                        if should_force_remote_track_restart(
+                            &playback_state,
+                            current_track.track_id,
+                            target_position_secs,
+                        ) {
+                            log::info!(
+                                "[QConnect] Restarting remote track {} from the beginning (current={}s target={}s)",
+                                current_track.track_id,
+                                playback_state.position,
+                                target_position_secs
+                            );
+                            load_remote_track_into_player(bridge, current_track.track_id).await?;
+                            reloaded_for_restart = true;
+                        }
+                    }
+
+                    if !reloaded_for_restart {
+                        if let Err(err) =
+                            ensure_remote_track_loaded(bridge, current_track.track_id).await
+                        {
+                            log::warn!(
+                                "[QConnect] Failed to load remote track {}: {err}",
+                                current_track.track_id
+                            );
+                        }
                     }
                 }
             }
@@ -2532,6 +2557,9 @@ async fn apply_renderer_command_to_corebridge(
             if let Some(position_ms) = renderer_state.current_position_ms.or(*current_position_ms) {
                 let current_pos_secs = bridge.get_playback_state().position;
                 let target_secs = position_ms / 1000;
+                if reloaded_for_restart && target_secs <= 1 {
+                    return Ok(());
+                }
                 // Only seek if the position differs by more than 2 seconds to
                 // avoid audio hiccups from redundant seeks (e.g. when the server
                 // echoes back our own position in a SET_STATE after queue_load).
@@ -2969,12 +2997,18 @@ fn should_reload_remote_track(
     playback_state.track_id != track_id || !has_loaded_audio
 }
 
-async fn ensure_remote_track_loaded(bridge: &CoreBridge, track_id: u64) -> Result<(), String> {
-    let playback_state = bridge.get_playback_state();
-    if !should_reload_remote_track(&playback_state, bridge.has_loaded_audio(), track_id) {
-        return Ok(());
-    }
+fn should_force_remote_track_restart(
+    playback_state: &qbz_player::PlaybackState,
+    track_id: u64,
+    target_position_secs: u64,
+) -> bool {
+    playback_state.track_id == track_id
+        && track_id != 0
+        && target_position_secs <= 1
+        && playback_state.position > target_position_secs.saturating_add(2)
+}
 
+async fn load_remote_track_into_player(bridge: &CoreBridge, track_id: u64) -> Result<(), String> {
     let stream_url = bridge
         .get_stream_url(track_id, Quality::UltraHiRes)
         .await
@@ -3001,6 +3035,15 @@ async fn ensure_remote_track_loaded(bridge: &CoreBridge, track_id: u64) -> Resul
             Ok(())
         }
     }
+}
+
+async fn ensure_remote_track_loaded(bridge: &CoreBridge, track_id: u64) -> Result<(), String> {
+    let playback_state = bridge.get_playback_state();
+    if !should_reload_remote_track(&playback_state, bridge.has_loaded_audio(), track_id) {
+        return Ok(());
+    }
+
+    load_remote_track_into_player(bridge, track_id).await
 }
 
 struct QconnectRemoteStreamInfo {
@@ -4727,6 +4770,33 @@ mod tests {
             Some(RepeatMode::All)
         );
         assert_eq!(super::qconnect_repeat_mode_from_loop_mode(99), None);
+    }
+
+    #[test]
+    fn forces_remote_restart_for_same_track_reset_to_zero() {
+        let playback_state = qbz_player::PlaybackState {
+            is_playing: false,
+            position: 248,
+            duration: 251,
+            track_id: 72930174,
+            volume: 1.0,
+        };
+
+        assert!(super::should_force_remote_track_restart(
+            &playback_state,
+            72930174,
+            0,
+        ));
+        assert!(!super::should_force_remote_track_restart(
+            &playback_state,
+            72930174,
+            120,
+        ));
+        assert!(!super::should_force_remote_track_restart(
+            &playback_state,
+            72930175,
+            0,
+        ));
     }
 
     #[test]

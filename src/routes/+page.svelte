@@ -325,6 +325,7 @@
     isQconnectRemoteModeActive as computeQconnectRemoteModeActive,
     logQconnectPlaybackReport as appendQconnectPlaybackReport,
     qconnectAdmissionReasonKey,
+    shouldQconnectSuppressLocalPlaybackAutomation,
     toggleQconnectConnection
   } from '$lib/services/qconnectRuntime';
   import type {
@@ -914,6 +915,12 @@
   const qconnectPeerRendererActive = $derived(
     isQconnectPeerRendererActive(qobuzConnectSessionSnapshot)
   );
+  const qconnectSuppressLocalPlaybackAutomation = $derived(
+    shouldQconnectSuppressLocalPlaybackAutomation(
+      isQobuzConnectConnected,
+      qobuzConnectSessionSnapshot
+    )
+  );
   const effectiveIsPlaying = $derived(
     qconnectPeerRendererActive
       ? qobuzConnectRendererSnapshot?.playing_state === 2
@@ -1022,13 +1029,12 @@
   function applyQobuzConnectStatus(status: QconnectConnectionStatus): void {
     qobuzConnectStatus = status;
     const nextConnected = Boolean(status.transport_connected);
-    if (nextConnected !== isQobuzConnectConnected) {
-      isQobuzConnectConnected = nextConnected;
-      setRemoteControlMode(nextConnected);
-      return;
-    }
     isQobuzConnectConnected = nextConnected;
   }
+
+  $effect(() => {
+    setRemoteControlMode(qconnectSuppressLocalPlaybackAutomation);
+  });
 
   function mapBackendQueueTrackToPlayingTrack(track: BackendQueueTrack): PlayingTrack {
     const rawRate = track.sample_rate ?? undefined;
@@ -4146,7 +4152,7 @@
     setOnTrackEnded(async () => {
       // When QConnect controls playback, the server/controller manages track advancement.
       // The frontend must NOT auto-advance or it will fight the remote controller.
-      if (isQobuzConnectConnected) {
+      if (qconnectSuppressLocalPlaybackAutomation) {
         console.log('[Player] Auto-advance suppressed: QConnect is controlling playback');
         return;
       }
@@ -4188,7 +4194,7 @@
 
     // Set up resume-from-stop callback: re-play the queue's current track
     setOnResumeFromStop(async () => {
-      if (isQobuzConnectConnected) return;
+      if (qconnectSuppressLocalPlaybackAutomation) return;
       const queueState = await getBackendQueueState();
       if (!queueState) return;
       const tryQueueIndices = async (indices: number[]): Promise<BackendQueueTrack | null> => {

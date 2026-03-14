@@ -6,6 +6,7 @@ import {
   isQconnectPeerRendererActive,
   isQconnectRemoteModeActive,
   resolveQconnectPlayNextAuthoritativeTrackId,
+  shouldQconnectSuppressLocalPlaybackAutomation,
   type QconnectConnectionStatus
 } from './qconnectRuntime';
 import type { QconnectQueueSnapshot, QconnectRendererSnapshot } from './qconnectRemoteQueue';
@@ -180,6 +181,28 @@ describe('QConnect runtime state helpers', () => {
         renderers: []
       })
     ).toBe(true);
+  });
+
+  it('suppresses local playback automation only when a peer renderer is active', () => {
+    expect(
+      shouldQconnectSuppressLocalPlaybackAutomation(true, {
+        session_uuid: 'session-1',
+        active_renderer_id: 4,
+        local_renderer_id: 11,
+        renderers: []
+      })
+    ).toBe(true);
+
+    expect(
+      shouldQconnectSuppressLocalPlaybackAutomation(true, {
+        session_uuid: 'session-1',
+        active_renderer_id: 11,
+        local_renderer_id: 11,
+        renderers: []
+      })
+    ).toBe(false);
+
+    expect(shouldQconnectSuppressLocalPlaybackAutomation(false, null)).toBe(false);
   });
 
   it('does not trust the local current track for play next when a peer renderer is active', () => {
