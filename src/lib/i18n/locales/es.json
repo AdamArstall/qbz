@@ -2056,6 +2056,7 @@
     "queueStateTitle": "Cola remota",
     "queueVersionLabel": "Version",
     "queueItemsLabel": "Items en cola",
+    "autoplayModeLabel": "Autoplay",
     "autoplayItemsLabel": "Items de autoplay",
     "shuffleModeLabel": "Aleatorio",
     "rendererStateTitle": "Renderer",

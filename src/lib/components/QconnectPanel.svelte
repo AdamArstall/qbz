@@ -339,6 +339,10 @@
           <strong>{queueSnapshot ? queueSnapshot.queue_items.length : $t('qconnect.notAvailable')}</strong>
         </div>
         <div class="runtime-line">
+          <span>{$t('qconnect.autoplayModeLabel')}</span>
+          <strong>{queueSnapshot ? safeValue(queueSnapshot.autoplay_mode) : $t('qconnect.notAvailable')}</strong>
+        </div>
+        <div class="runtime-line">
           <span>{$t('qconnect.autoplayItemsLabel')}</span>
           <strong>{queueSnapshot ? queueSnapshot.autoplay_items.length : $t('qconnect.notAvailable')}</strong>
         </div>

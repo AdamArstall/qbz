@@ -570,6 +570,17 @@ export async function loadQconnectQueue(
     console.log('[QConnect/LoadQueue] sending queue_load_tracks');
     await sendQconnectQueueCommandWithAdmission('queue_load_tracks', origin, payload);
     console.log('[QConnect/LoadQueue] SUCCESS');
+
+    // Sync local autoplay preference to QConnect server after queue load
+    try {
+      const { isAutoplayEnabled } = await import('$lib/stores/playbackPreferencesStore');
+      await invoke('v2_qconnect_set_autoplay_mode_if_remote', {
+        enabled: isAutoplayEnabled()
+      });
+    } catch {
+      // Best-effort sync
+    }
+
     await emitQconnectDiagnostic('qconnect:queue_load_sent', 'info', {
       track_count: trackIds.length,
       start_index: normalizedStartIndex,

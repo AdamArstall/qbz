@@ -2056,6 +2056,7 @@
     "queueStateTitle": "Remote Queue",
     "queueVersionLabel": "Version",
     "queueItemsLabel": "Queue items",
+    "autoplayModeLabel": "Autoplay",
     "autoplayItemsLabel": "Autoplay items",
     "shuffleModeLabel": "Shuffle",
     "rendererStateTitle": "Renderer",
