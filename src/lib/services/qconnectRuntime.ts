@@ -196,9 +196,13 @@ export function isQconnectPeerRendererActive(
 
 export function shouldQconnectSuppressLocalPlaybackAutomation(
   connected: boolean,
-  sessionSnapshot: QconnectSessionSnapshot | null | undefined
+  _sessionSnapshot: QconnectSessionSnapshot | null | undefined
 ): boolean {
-  return connected && isQconnectPeerRendererActive(sessionSnapshot);
+  // When QConnect is connected, the server is the authority for track
+  // transitions — regardless of whether QBZ is the local renderer or a peer
+  // is rendering.  Suppress gapless interception, auto-advance, and
+  // resume-from-stop so the frontend never fights the server.
+  return connected;
 }
 
 export function resolveQconnectPlayNextAuthoritativeTrackId(params: {
