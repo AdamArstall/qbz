@@ -314,7 +314,12 @@ where
                 let reducer_outcome = apply_event(&mut state.queue, &queue_event, now_ms());
                 let _metric_name = telemetry::queue_reducer_event_name(reducer_outcome.event_name);
                 should_emit_queue_update = true;
-                if matches!(event.event_type, QueueEventType::SrvrCtrlShuffleModeSet) {
+                if matches!(
+                    event.event_type,
+                    QueueEventType::SrvrCtrlShuffleModeSet
+                        | QueueEventType::SrvrCtrlQueueTracksReordered
+                        | QueueEventType::SrvrCtrlQueueTracksRemoved
+                ) {
                     should_trigger_resync = true;
                 }
             }
@@ -1082,6 +1087,65 @@ mod tests {
         assert!(
             !sent.is_empty(),
             "expected ask-for-state resync after shuffle"
+        );
+    }
+
+    #[tokio::test]
+    async fn reorder_event_requests_authoritative_queue_state() {
+        let (app, sink, transport, _events_rx) = build_connected_app().await;
+
+        app.apply_server_event(QueueServerEvent {
+            event_type: QueueEventType::SrvrCtrlQueueTracksReordered,
+            action_uuid: Some("a1b2c3d4-e5f6-7890-abcd-ef1234567890".to_string()),
+            queue_version: Some(QueueVersion::new(2, 1)),
+            payload: json!({
+                "queue_item_ids": [3],
+                "insert_after": 1,
+                "autoplay_reset": false,
+                "autoplay_loading": false
+            }),
+        })
+        .await
+        .expect("apply reorder event");
+
+        let events = sink.snapshot().await;
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, QconnectAppEvent::QueueResyncTriggered)));
+
+        let sent = transport.sent_messages().await;
+        assert!(
+            !sent.is_empty(),
+            "expected ask-for-state resync after reorder"
+        );
+    }
+
+    #[tokio::test]
+    async fn remove_event_requests_authoritative_queue_state() {
+        let (app, sink, transport, _events_rx) = build_connected_app().await;
+
+        app.apply_server_event(QueueServerEvent {
+            event_type: QueueEventType::SrvrCtrlQueueTracksRemoved,
+            action_uuid: Some("b2c3d4e5-f6a7-8901-bcde-f12345678901".to_string()),
+            queue_version: Some(QueueVersion::new(3, 1)),
+            payload: json!({
+                "queue_item_ids": [2],
+                "autoplay_reset": false,
+                "autoplay_loading": false
+            }),
+        })
+        .await
+        .expect("apply remove event");
+
+        let events = sink.snapshot().await;
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, QconnectAppEvent::QueueResyncTriggered)));
+
+        let sent = transport.sent_messages().await;
+        assert!(
+            !sent.is_empty(),
+            "expected ask-for-state resync after remove"
         );
     }
 
