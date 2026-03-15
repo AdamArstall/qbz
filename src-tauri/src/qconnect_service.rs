@@ -2170,6 +2170,74 @@ impl QconnectServiceState {
             QCONNECT_PLAY_TRACK_HANDOFF_WAIT_MS
         ))
     }
+
+    async fn toggle_shuffle_if_remote(
+        &self,
+        app_handle: &AppHandle,
+    ) -> Result<bool, String> {
+        let remote_context = self.effective_remote_renderer_snapshot().await?;
+        let Some((renderer, _queue, session)) = remote_context else {
+            return Ok(false);
+        };
+
+        let current_shuffle = renderer.shuffle_mode.unwrap_or(false);
+        let next_shuffle = !current_shuffle;
+
+        let payload = json!({ "shuffle_mode": next_shuffle });
+        self.send_command(QueueCommandType::CtrlSrvrSetShuffleMode, payload)
+            .await?;
+
+        emit_qconnect_diagnostic(
+            app_handle,
+            "qconnect:toggle_shuffle_handoff",
+            "info",
+            json!({
+                "active_renderer_id": session.active_renderer_id,
+                "local_renderer_id": session.local_renderer_id,
+                "current_shuffle_mode": current_shuffle,
+                "requested_shuffle_mode": next_shuffle,
+            }),
+        );
+
+        Ok(true)
+    }
+
+    async fn cycle_repeat_if_remote(
+        &self,
+        app_handle: &AppHandle,
+    ) -> Result<bool, String> {
+        let remote_context = self.effective_remote_renderer_snapshot().await?;
+        let Some((renderer, _queue, session)) = remote_context else {
+            return Ok(false);
+        };
+
+        // QConnect loop mode: 1 = off, 3 = repeat all, 2 = repeat one
+        // Cycle: off(1) → all(3) → one(2) → off(1)
+        let current_loop = renderer.loop_mode.unwrap_or(1);
+        let next_loop = match current_loop {
+            0 | 1 => 3, // off → all
+            3 => 2,     // all → one
+            _ => 1,     // one → off
+        };
+
+        let payload = json!({ "loop_mode": next_loop });
+        self.send_command(QueueCommandType::CtrlSrvrSetLoopMode, payload)
+            .await?;
+
+        emit_qconnect_diagnostic(
+            app_handle,
+            "qconnect:cycle_repeat_handoff",
+            "info",
+            json!({
+                "active_renderer_id": session.active_renderer_id,
+                "local_renderer_id": session.local_renderer_id,
+                "current_loop_mode": current_loop,
+                "requested_loop_mode": next_loop,
+            }),
+        );
+
+        Ok(true)
+    }
 }
 
 fn resolve_queue_item_ids_from_queue_state(
@@ -3908,6 +3976,28 @@ pub async fn v2_qconnect_skip_previous_if_remote(
 ) -> Result<bool, RuntimeError> {
     service
         .skip_previous_if_remote(&app_handle)
+        .await
+        .map_err(RuntimeError::Internal)
+}
+
+#[tauri::command]
+pub async fn v2_qconnect_toggle_shuffle_if_remote(
+    app_handle: AppHandle,
+    service: State<'_, QconnectServiceState>,
+) -> Result<bool, RuntimeError> {
+    service
+        .toggle_shuffle_if_remote(&app_handle)
+        .await
+        .map_err(RuntimeError::Internal)
+}
+
+#[tauri::command]
+pub async fn v2_qconnect_cycle_repeat_if_remote(
+    app_handle: AppHandle,
+    service: State<'_, QconnectServiceState>,
+) -> Result<bool, RuntimeError> {
+    service
+        .cycle_repeat_if_remote(&app_handle)
         .await
         .map_err(RuntimeError::Internal)
 }

@@ -357,6 +357,14 @@
 
   async function handleQueueTrackPlay(trackId: string): Promise<void> {
     try {
+      const handledRemotely = await invoke<boolean>('v2_qconnect_play_track_if_remote', { trackId: parseInt(trackId, 10) });
+      if (handledRemotely) return;
+    } catch (err) {
+      console.error('[MiniPlayer] remote queue track play handoff failed:', err);
+      return;
+    }
+
+    try {
       const queueSnapshot = await getBackendQueueState();
       if (!queueSnapshot) return;
 
@@ -452,6 +460,14 @@
 
   async function handleToggleShuffle(): Promise<void> {
     try {
+      const handledRemotely = await invoke<boolean>('v2_qconnect_toggle_shuffle_if_remote');
+      if (handledRemotely) return;
+    } catch (err) {
+      console.error('[MiniPlayer] remote shuffle handoff failed:', err);
+      return;
+    }
+
+    try {
       await toggleShuffle();
     } catch (err) {
       console.error('[MiniPlayer] toggleShuffle failed:', err);
@@ -459,6 +475,14 @@
   }
 
   async function handleToggleRepeat(): Promise<void> {
+    try {
+      const handledRemotely = await invoke<boolean>('v2_qconnect_cycle_repeat_if_remote');
+      if (handledRemotely) return;
+    } catch (err) {
+      console.error('[MiniPlayer] remote repeat handoff failed:', err);
+      return;
+    }
+
     try {
       await toggleRepeat();
     } catch (err) {

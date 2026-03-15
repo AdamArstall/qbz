@@ -2203,6 +2203,17 @@
   }
 
   async function toggleShuffle() {
+    try {
+      const handledRemotely = await invoke<boolean>('v2_qconnect_toggle_shuffle_if_remote');
+      if (handledRemotely) {
+        await refreshQobuzConnectRuntimeState();
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to hand off shuffle toggle to remote renderer:', err);
+      return;
+    }
+
     const result = await queueToggleShuffle();
     if (result.success) {
       showToast(result.enabled ? $t('toast.shuffleEnabled') : $t('toast.shuffleDisabled'), 'info');
@@ -2214,6 +2225,17 @@
   }
 
   async function toggleRepeat() {
+    try {
+      const handledRemotely = await invoke<boolean>('v2_qconnect_cycle_repeat_if_remote');
+      if (handledRemotely) {
+        await refreshQobuzConnectRuntimeState();
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to hand off repeat cycle to remote renderer:', err);
+      return;
+    }
+
     const result = await queueToggleRepeat();
     if (result.success) {
       const messages: Record<RepeatMode, string> = {
@@ -2420,6 +2442,17 @@
   // Play a specific track from the queue panel
   async function handleQueueTrackPlay(trackId: string) {
     try {
+      const handledRemotely = await invoke<boolean>('v2_qconnect_play_track_if_remote', { trackId: parseInt(trackId, 10) });
+      if (handledRemotely) {
+        await refreshQobuzConnectRuntimeState();
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to hand off queue track play to remote renderer:', err);
+      return;
+    }
+
+    try {
       // Find the index in the queue
       const queueState = await getBackendQueueState();
       if (!queueState) {
@@ -2547,6 +2580,17 @@
 
   // Play a track from history
   async function handlePlayHistoryTrack(trackId: string) {
+    try {
+      const handledRemotely = await invoke<boolean>('v2_qconnect_play_track_if_remote', { trackId: parseInt(trackId, 10) });
+      if (handledRemotely) {
+        await refreshQobuzConnectRuntimeState();
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to hand off history track play to remote renderer:', err);
+      return;
+    }
+
     try {
       // Get the full queue state to find the track in history
       const queueState = await getBackendQueueState();
