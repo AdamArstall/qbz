@@ -792,6 +792,25 @@ impl QconnectEventSink for TauriQconnectEventSink {
                 cache_renderer_snapshot(&mut sync_state, renderer_state);
             }
             QconnectAppEvent::QueueUpdated(queue_state) => {
+                log::debug!(
+                    "[QConnect] QueueUpdated: items={} shuffle_mode={} shuffle_order={:?} version={}.{}",
+                    queue_state.queue_items.len(),
+                    queue_state.shuffle_mode,
+                    queue_state.shuffle_order,
+                    queue_state.version.major,
+                    queue_state.version.minor,
+                );
+                if queue_state.shuffle_mode {
+                    let valid = queue_state.shuffle_order.as_ref()
+                        .map(|o| is_valid_ordered_queue_shuffle_order(o, queue_state.queue_items.len()))
+                        .unwrap_or(false);
+                    log::debug!(
+                        "[QConnect] shuffle_order valid={} items_len={} order_len={:?}",
+                        valid,
+                        queue_state.queue_items.len(),
+                        queue_state.shuffle_order.as_ref().map(|o| o.len()),
+                    );
+                }
                 {
                     let mut sync_state = self.sync_state.lock().await;
                     sync_state.last_remote_queue_state = Some(queue_state.clone());
@@ -3268,7 +3287,17 @@ fn resolve_core_shuffle_order(
 
     let raw_order = queue_state.shuffle_order.as_ref().filter(|order| {
         is_valid_ordered_queue_shuffle_order(order, queue_state.queue_items.len())
-    })?;
+    });
+
+    if raw_order.is_none() {
+        log::debug!(
+            "[QConnect] resolve_core_shuffle_order: raw_order invalid or absent, items={} order={:?}",
+            queue_state.queue_items.len(),
+            queue_state.shuffle_order,
+        );
+        return None;
+    }
+    let raw_order = raw_order.unwrap();
 
     let current_index =
         resolve_remote_start_index(queue_state, renderer_queue_item_id, renderer_track_id);
@@ -3297,6 +3326,11 @@ fn resolve_core_shuffle_order(
             ordered.push(index);
         }
     }
+
+    log::debug!(
+        "[QConnect] resolve_core_shuffle_order: result={:?} current={:?} next={:?}",
+        ordered, current_index, next_index,
+    );
 
     Some(ordered)
 }
