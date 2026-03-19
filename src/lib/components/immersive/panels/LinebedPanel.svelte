@@ -75,8 +75,8 @@
   const LINE_SPACING = 20;
   const WORLD_AMPLITUDE = 2.4;
   const CAMERA_FOV_DEG = 45;
-  const CAMERA_POSITION: CameraVector = { x: 26.1, y: 1738.6, z: 868.8 };
-  const CAMERA_ROTATION: CameraVector = { x: -0.6543, y: 0.0156, z: 0.012 };
+  const CAMERA_POSITION: CameraVector = { x: 26.1, y: 2200.0, z: 868.8 };
+  const CAMERA_ROTATION: CameraVector = { x: -0.78, y: 0.0156, z: 0.012 };
   const CAMERA_NEAR = 80;
   const LINE_OPACITY = 0.78;
   const LINE_WIDTH = 0.82;
