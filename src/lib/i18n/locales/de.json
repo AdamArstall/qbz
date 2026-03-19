@@ -420,6 +420,12 @@
     "likeAlbumsHint": "Markiere Alben mit „Gefällt mir“, um sie hier zu sehen",
     "likeArtistsHint": "Markiere Künstler mit „Gefällt mir“, um sie hier zu sehen",
     "likePlaylistsHint": "Klicke auf das Herzsymbol bei Playlists, um sie hier hinzuzufügen",
+    "noFollowingPlaylists": "Du folgst keinen Playlists",
+    "followPlaylistsHint": "Folge Playlists auf Qobuz, um sie hier zu sehen",
+    "playlistSubTabs": {
+      "favorites": "Favoriten",
+      "following": "Folge ich"
+    },
     "randomAlbum": "Zufälliges Album abspielen",
     "randomArtist": "Zu zufälligem Künstler",
     "selectArtistHint": "Wählen Sie einen Künstler, um seine Alben zu sehen",

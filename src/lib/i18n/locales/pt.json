@@ -444,6 +444,12 @@
     "likeAlbumsHint": "Curta álbuns para vê-los aqui",
     "likeArtistsHint": "Curta artistas para vê-los aqui",
     "likePlaylistsHint": "Clique no ícone de coração nas playlists para adicioná-las aqui",
+    "noFollowingPlaylists": "Você não segue nenhuma playlist",
+    "followPlaylistsHint": "Siga playlists no Qobuz para vê-las aqui",
+    "playlistSubTabs": {
+      "favorites": "Favoritas",
+      "following": "Seguindo"
+    },
     "randomAlbum": "Reproduzir álbum aleatório",
     "randomArtist": "Ir para artista aleatório",
     "selectArtistHint": "Selecione um artista para ver seus álbuns",

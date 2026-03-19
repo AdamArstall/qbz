@@ -444,6 +444,12 @@
     "likeAlbumsHint": "Like albums to see them here",
     "likeArtistsHint": "Like artists to see them here",
     "likePlaylistsHint": "Click the heart icon on playlists to add them here",
+    "noFollowingPlaylists": "Not following any playlists",
+    "followPlaylistsHint": "Follow playlists on Qobuz to see them here",
+    "playlistSubTabs": {
+      "favorites": "Favorites",
+      "following": "Following"
+    },
     "randomAlbum": "Play random album",
     "randomArtist": "Go to random artist",
     "selectArtistHint": "Select an artist to see their albums",
