@@ -155,7 +155,7 @@ pub(crate) fn convert_to_qbz_audio_settings(settings: &AudioSettings) -> qbz_aud
         device_sample_rate_limits: settings.device_sample_rate_limits.clone(),
         backend_type: settings.backend_type.clone(),
         alsa_plugin: settings.alsa_plugin.clone(),
-        alsa_hardware_volume: false,
+        alsa_hardware_volume: settings.alsa_hardware_volume,
         stream_first_track: settings.stream_first_track,
         stream_buffer_seconds: settings.stream_buffer_seconds,
         streaming_only: settings.streaming_only,
@@ -8793,19 +8793,26 @@ pub fn v2_set_audio_streaming_only(
 
 /// Reset audio settings to defaults (V2)
 #[tauri::command]
-pub fn v2_reset_audio_settings(state: State<'_, AudioSettingsState>) -> Result<(), RuntimeError> {
+pub async fn v2_reset_audio_settings(
+    state: State<'_, AudioSettingsState>,
+    bridge: State<'_, CoreBridgeState>,
+) -> Result<(), RuntimeError> {
     log::info!("[V2] reset_audio_settings");
-    let guard = state
-        .store
-        .lock()
-        .map_err(|e| RuntimeError::Internal(format!("Lock error: {}", e)))?;
-    let store = guard
-        .as_ref()
-        .ok_or(RuntimeError::UserSessionNotActivated)?;
-    store
-        .reset_all()
-        .map(|_| ())
-        .map_err(RuntimeError::Internal)
+    {
+        let guard = state
+            .store
+            .lock()
+            .map_err(|e| RuntimeError::Internal(format!("Lock error: {}", e)))?;
+        let store = guard
+            .as_ref()
+            .ok_or(RuntimeError::UserSessionNotActivated)?;
+        store
+            .reset_all()
+            .map(|_| ())
+            .map_err(RuntimeError::Internal)?;
+    }
+    sync_audio_settings_to_player(&state, &bridge).await;
+    Ok(())
 }
 
 /// Set stream first track enabled (V2)
