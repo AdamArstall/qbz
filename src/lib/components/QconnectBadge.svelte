@@ -13,17 +13,35 @@
 
   let {
     connected,
-    sessionSnapshot = null,
+    sessionSnapshot: sessionSnapshotProp = null,
     onToggleConnection,
     busy = false,
   }: Props = $props();
+
+  // Local snapshot that can be refreshed independently of the prop
+  let sessionSnapshot = $state<QconnectSessionSnapshot | null>(null);
+  $effect(() => {
+    sessionSnapshot = sessionSnapshotProp;
+  });
 
   let isPopupOpen = $state(false);
   let isInfoHovering = $state(false);
   let settingRenderer = $state(false);
 
-  function togglePopup(): void {
+  async function togglePopup(): Promise<void> {
     isPopupOpen = !isPopupOpen;
+    // Force a fresh session snapshot when opening — the session state
+    // may have stale renderer list from before deferred_renderer_join
+    if (isPopupOpen && connected) {
+      try {
+        const fresh = await invoke<QconnectSessionSnapshot>('v2_qconnect_session_snapshot');
+        if (fresh && fresh.renderers.length > 0) {
+          sessionSnapshot = fresh;
+        }
+      } catch {
+        // non-fatal
+      }
+    }
   }
 
   function closePopup(): void {
