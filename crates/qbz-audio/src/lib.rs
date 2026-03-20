@@ -65,12 +65,18 @@ pub use loudness_cache::LoudnessCache;
 pub use settings::AudioSettings;
 pub use visualizer::{RingBuffer, TappedSource, VisualizerTap};
 
-// Stub implementations for non-Linux platforms
+/// Stub: returns the ID unchanged on non-Linux (no ALSA normalization needed).
 #[cfg(not(target_os = "linux"))]
-pub fn normalize_device_id_to_stable(_id: &str) -> String { _id.to_string() }
+pub fn normalize_device_id_to_stable(id: &str) -> String { id.to_string() }
+
+/// Stub: no ALSA device resolution on non-Linux.
 #[cfg(not(target_os = "linux"))]
 pub fn resolve_stable_to_current_hw(_stable: &str) -> Option<String> { None }
+
+/// Stub: no ALSA sample rate probing on non-Linux.
 #[cfg(not(target_os = "linux"))]
 pub fn device_supports_sample_rate(_device_id: &str, _sample_rate: u32) -> Option<bool> { None }
+
+/// Stub: no ALSA rate enumeration on non-Linux.
 #[cfg(not(target_os = "linux"))]
 pub fn get_device_supported_rates(_device_id: &str) -> Option<Vec<u32>> { None }
