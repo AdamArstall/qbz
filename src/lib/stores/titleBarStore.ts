@@ -14,6 +14,9 @@ const STORAGE_KEY_HIDE = 'qbz-hide-titlebar';
 const STORAGE_KEY_SYSTEM = 'qbz-use-system-titlebar';
 const STORAGE_KEY_WINDOW_CONTROLS = 'qbz-show-window-controls';
 
+// Platform detection (cached once — never changes at runtime)
+const isMacOS = typeof document !== 'undefined' && document.documentElement.classList.contains('macos');
+
 // State
 let hideTitleBar = false;
 let useSystemTitleBar = false;
@@ -88,7 +91,7 @@ export function getUseSystemTitleBar(): boolean {
  */
 export function shouldShowTitleBar(): boolean {
   // macOS always uses native decorations — no custom title bar
-  if (document.documentElement.classList.contains('macos')) return false;
+  if (isMacOS) return false;
   return !hideTitleBar && !useSystemTitleBar;
 }
 
@@ -97,7 +100,7 @@ export function shouldShowTitleBar(): boolean {
  * Returns 0 if title bar is hidden or system title bar is active, 40 otherwise
  */
 export function getTitleBarHeight(): number {
-  if (document.documentElement.classList.contains('macos')) return 0;
+  if (isMacOS) return 0;
   return (hideTitleBar || useSystemTitleBar) ? 0 : 40;
 }
 
