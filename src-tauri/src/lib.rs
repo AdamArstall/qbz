@@ -493,13 +493,9 @@ fn should_use_main_window_transparency() -> bool {
     // On macOS, transparent WKWebView causes severe rendering performance issues
     // (every frame must be composited through the transparent background).
     // Default to opaque unless explicitly requested.
-    let force_transparent = std::env::var("QBZ_FORCE_TRANSPARENT_WINDOWS")
-        .map(|value| {
-            let normalized = value.trim().to_ascii_lowercase();
-            normalized == "1" || normalized == "true" || normalized == "yes"
-        })
-        .unwrap_or(false);
-    force_transparent
+    std::env::var("QBZ_FORCE_TRANSPARENT_WINDOWS")
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false)
 }
 
 pub fn run() {
