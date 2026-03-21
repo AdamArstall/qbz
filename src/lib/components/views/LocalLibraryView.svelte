@@ -1413,13 +1413,18 @@
 
       if (isOffline) {
         // When offline, get folders without calling is_network_path (blocks offline)
-        // Use basic folder list command instead
         folders = await invoke<LibraryFolder[]>('v2_library_get_folders_with_metadata');
         console.log('[LocalLibrary] Received folders (offline mode):', folders.length);
 
-        // Mark all network folders as inaccessible, local folders as accessible
+        // Only exclude network folders when there's no network at all.
+        // Manual offline / not-logged-in still has LAN access for NAS/Plex.
+        const excludeNetwork = shouldExcludeNetworkFolders();
         for (const folder of folders) {
-          folderAccessibility.set(folder.id, !folder.isNetwork);
+          if (folder.isNetwork && excludeNetwork) {
+            folderAccessibility.set(folder.id, false);
+          } else {
+            folderAccessibility.set(folder.id, true);
+          }
         }
         folderAccessibility = new Map(folderAccessibility);
       } else {
