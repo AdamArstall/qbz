@@ -64,10 +64,11 @@ const SNAP_STORE_URL = 'https://snapcraft.io/qbz-player'
 
 /* ── Tabs ─────────────────────────────────────────────────── */
 
-type TabId = 'arch' | 'debian' | 'fedora' | 'flatpak' | 'snap' | 'appimage' | 'tarball' | 'source'
+type TabId = 'arch' | 'gentoo' | 'debian' | 'fedora' | 'flatpak' | 'snap' | 'appimage' | 'tarball' | 'source'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'arch', label: 'Arch' },
+  { id: 'gentoo', label: 'Gentoo' },
   { id: 'debian', label: 'Debian / Ubuntu' },
   { id: 'fedora', label: 'Fedora / RHEL' },
   { id: 'flatpak', label: 'Flatpak' },
@@ -79,6 +80,7 @@ const TABS: { id: TabId; label: string }[] = [
 
 const TAB_TYPES: Record<TabId, DownloadItem['type'][]> = {
   arch: ['aur'],
+  gentoo: [],
   debian: ['deb'],
   fedora: ['rpm'],
   flatpak: ['flathub', 'flatpak'],
@@ -90,6 +92,7 @@ const TAB_TYPES: Record<TabId, DownloadItem['type'][]> = {
 
 const TAB_ICONS: Record<TabId, string | null> = {
   arch: '/icons/arch.svg',
+  gentoo: '/icons/gentoo.svg',
   debian: '/icons/debian.svg',
   fedora: '/icons/redhat.svg',
   flatpak: '/icons/flatpak.svg',
@@ -404,6 +407,66 @@ function AptRepoSection() {
   )
 }
 
+const GENTOO_OVERLAY_CMDS = [
+  'eselect repository add qbz-overlay git https://github.com/vicrodh/qbz-overlay.git',
+  'emerge --sync qbz-overlay',
+]
+
+const GENTOO_INSTALL_BIN = 'emerge media-sound/qbz-bin'
+const GENTOO_INSTALL_SRC = 'emerge media-sound/qbz'
+
+function GentooContent() {
+  return (
+    <div className="download-item">
+      <div className="download-item__header">
+        <div className="download-item__info">
+          <span className="download-item__label">QBZ Overlay</span>
+        </div>
+      </div>
+      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
+        Add the QBZ overlay to Portage, then install from source or prebuilt binary.
+      </p>
+      {GENTOO_OVERLAY_CMDS.map((cmd) => (
+        <div key={cmd} className="terminal" style={{ marginBottom: 6 }}>
+          <code>
+            <span className="terminal__prompt">#</span>
+            <span className="terminal__cmd">{cmd}</span>
+          </code>
+          <CopyButton text={cmd} />
+        </div>
+      ))}
+      <div style={{ marginTop: 16 }}>
+        <div className="download-meta__name" style={{ fontSize: 14, marginBottom: 8 }}>Install (prebuilt binary)</div>
+        <div className="terminal">
+          <code>
+            <span className="terminal__prompt">#</span>
+            <span className="terminal__cmd">{GENTOO_INSTALL_BIN}</span>
+          </code>
+          <CopyButton text={GENTOO_INSTALL_BIN} />
+        </div>
+      </div>
+      <details className="deps-details" style={{ marginTop: 12 }}>
+        <summary className="deps-summary">Or build from source?</summary>
+        <div className="terminal terminal--deps">
+          <code>
+            <span className="terminal__prompt">#</span>
+            <span className="terminal__cmd">{GENTOO_INSTALL_SRC}</span>
+          </code>
+          <CopyButton text={GENTOO_INSTALL_SRC} />
+        </div>
+      </details>
+      <a
+        className="btn btn-ghost btn-sm"
+        href="https://github.com/vicrodh/qbz-overlay"
+        target="_blank"
+        rel="noreferrer"
+      >
+        View overlay repo
+      </a>
+    </div>
+  )
+}
+
 function SourceContent() {
   const { t } = useTranslation()
   return (
@@ -598,6 +661,10 @@ export function DownloadSection() {
             <div className="download-tab-content" role="tabpanel">
               {activeTab === 'source' ? (
                 <SourceContent />
+              ) : activeTab === 'gentoo' ? (
+                <div className="download-list">
+                  <GentooContent />
+                </div>
               ) : tabDownloads.length > 0 ? (
                 <div className="download-list">
                   {activeTab === 'debian' && <AptRepoSection />}

@@ -1140,4 +1140,24 @@ p {
     width: 100%;
     justify-content: center;
   }
+
+  .download-tabs {
+    justify-content: space-between;
+    overflow-x: visible;
+  }
+
+  .download-tab {
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 6px;
+    font-size: 0.65rem;
+    min-width: 0;
+    flex: 1;
+    justify-content: center;
+  }
+
+  .download-tab__icon {
+    width: 20px;
+    height: 20px;
+  }
 }
