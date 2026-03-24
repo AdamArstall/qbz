@@ -1124,7 +1124,21 @@
       "verboseLogDisabled": "Capture de logs detaillee desactivee",
       "qconnectDevTools": "Outils dev Qobuz Connect",
       "qconnectDevToolsShow": "Afficher le bouton du panneau",
-      "qconnectDevToolsDesc": "Affiche le bouton de connexion avancée dans la barre du lecteur"
+      "qconnectDevToolsDesc": "Affiche le bouton de connexion avancée dans la barre du lecteur",
+      "diagnostics": {
+        "title": "Diagnostic système",
+        "description": "Comparer les paramètres enregistrés avec l'état d'exécution",
+        "refresh": "Actualiser",
+        "export": "Exporter dans le presse-papiers",
+        "exported": "Copié !",
+        "sectionAudio": "Audio",
+        "sectionGraphics": "Graphiques et rendu",
+        "sectionEnv": "Variables d'environnement",
+        "colSetting": "Paramètre",
+        "colSaved": "Enregistré",
+        "colRuntime": "Exécution",
+        "colStatus": "Statut"
+      }
     },
     "blacklist": {
       "title": "Liste noire des artistes",

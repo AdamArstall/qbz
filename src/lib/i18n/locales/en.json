@@ -1195,7 +1195,21 @@
       "verboseLogDisabled": "Verbose log capture disabled",
       "qconnectDevTools": "Qobuz Connect Dev Tools",
       "qconnectDevToolsShow": "Show Dev Panel Button",
-      "qconnectDevToolsDesc": "Show the advanced connection screen button in the player bar"
+      "qconnectDevToolsDesc": "Show the advanced connection screen button in the player bar",
+      "diagnostics": {
+        "title": "System Diagnostics",
+        "description": "Compare saved settings against runtime state",
+        "refresh": "Refresh",
+        "export": "Export to Clipboard",
+        "exported": "Copied!",
+        "sectionAudio": "Audio",
+        "sectionGraphics": "Graphics & Rendering",
+        "sectionEnv": "Environment Variables",
+        "colSetting": "Setting",
+        "colSaved": "Saved",
+        "colRuntime": "Runtime",
+        "colStatus": "Status"
+      }
     },
     "blacklist": {
       "title": "Artist Blacklist",

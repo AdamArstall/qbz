@@ -1124,7 +1124,21 @@
       "verboseLogDisabled": "Ausführliche Log-Erfassung deaktiviert",
       "qconnectDevTools": "Qobuz Connect Entwicklertools",
       "qconnectDevToolsShow": "Entwickler-Panel anzeigen",
-      "qconnectDevToolsDesc": "Zeigt die erweiterte Verbindungsschaltfläche in der Playerleiste an"
+      "qconnectDevToolsDesc": "Zeigt die erweiterte Verbindungsschaltfläche in der Playerleiste an",
+      "diagnostics": {
+        "title": "Systemdiagnose",
+        "description": "Gespeicherte Einstellungen mit Laufzeitstatus vergleichen",
+        "refresh": "Aktualisieren",
+        "export": "In Zwischenablage kopieren",
+        "exported": "Kopiert!",
+        "sectionAudio": "Audio",
+        "sectionGraphics": "Grafik & Rendering",
+        "sectionEnv": "Umgebungsvariablen",
+        "colSetting": "Einstellung",
+        "colSaved": "Gespeichert",
+        "colRuntime": "Laufzeit",
+        "colStatus": "Status"
+      }
     },
     "blacklist": {
       "title": "Künstler-Blacklist",

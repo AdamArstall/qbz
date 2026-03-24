@@ -12,6 +12,7 @@
   import DACSetupWizard from '../DACSetupWizard.svelte';
   import RemoteControlSetupGuide from '../RemoteControlSetupGuide.svelte';
   import LogsModal from '../LogsModal.svelte';
+  import DiagnosticsPanel from '../DiagnosticsPanel.svelte';
   import VolumeSlider from '../VolumeSlider.svelte';
   import UpdateCheckResultModal from '../updates/UpdateCheckResultModal.svelte';
   import WhatsNewModal from '../updates/WhatsNewModal.svelte';
@@ -5643,6 +5644,9 @@
         </div>
       </div>
     {/if}
+
+    <!-- System Diagnostics -->
+    <DiagnosticsPanel />
 
     <!-- Qobuz Connect Dev Tools -->
     <h4 class="subsection-title">{$t('settings.developer.qconnectDevTools')}</h4>

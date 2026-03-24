@@ -1195,7 +1195,21 @@
       "verboseLogDisabled": "Captura de logs detallada desactivada",
       "qconnectDevTools": "Herramientas de Qobuz Connect",
       "qconnectDevToolsShow": "Mostrar botón del panel",
-      "qconnectDevToolsDesc": "Muestra el botón de la pantalla avanzada de conexión en el reproductor"
+      "qconnectDevToolsDesc": "Muestra el botón de la pantalla avanzada de conexión en el reproductor",
+      "diagnostics": {
+        "title": "Diagnóstico del sistema",
+        "description": "Comparar configuración guardada contra estado de ejecución",
+        "refresh": "Actualizar",
+        "export": "Exportar al portapapeles",
+        "exported": "¡Copiado!",
+        "sectionAudio": "Audio",
+        "sectionGraphics": "Gráficos y renderizado",
+        "sectionEnv": "Variables de entorno",
+        "colSetting": "Configuración",
+        "colSaved": "Guardado",
+        "colRuntime": "Ejecución",
+        "colStatus": "Estado"
+      }
     },
     "blacklist": {
       "title": "Lista Negra de Artistas",
