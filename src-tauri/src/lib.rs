@@ -1254,6 +1254,7 @@ pub fn run() {
             commands_v2::v2_plex_play_track,
             commands_v2::v2_set_visualizer_enabled,
             commands_v2::v2_get_developer_settings,
+            commands_v2::v2_get_runtime_diagnostics,
             commands_v2::v2_set_developer_force_dmabuf,
             commands_v2::v2_get_graphics_settings,
             commands_v2::v2_get_graphics_startup_status,
