@@ -1,13 +1,13 @@
 /**
  * Tracks Qobuz service degradation (repeated 504/server errors).
  * Shows a visual indicator when the service is having issues.
- * Auto-clears after 10 minutes without new errors.
+ * Auto-clears after 5 minutes without new errors.
  */
 
 let degraded = false;
 let lastErrorTime = 0;
 let clearTimer: ReturnType<typeof setTimeout> | null = null;
-const CLEAR_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+const CLEAR_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const listeners = new Set<() => void>();
 
 function notifyListeners() {
