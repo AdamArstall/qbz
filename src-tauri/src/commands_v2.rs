@@ -13,7 +13,7 @@ use qbz_models::{
     Album, Artist, DiscoverAlbum, DiscoverData, DiscoverPlaylistsResponse, DiscoverResponse,
     GenreInfo, LabelDetail, LabelExploreResponse, LabelPageData, PageArtistResponse, Playlist,
     PlaylistTag, Quality, QueueState, QueueTrack as CoreQueueTrack, RepeatMode, SearchResultsPage,
-    Track, UserSession,
+    StreamUrl, Track, UserSession,
 };
 use qconnect_app::QueueCommandType;
 use qconnect_app::{QConnectQueueState, QConnectRendererState};
@@ -45,7 +45,7 @@ use crate::config::playback_preferences::{
 use crate::config::tray_settings::TraySettings;
 use crate::config::tray_settings::TraySettingsState;
 use crate::config::window_settings::WindowSettingsState;
-use crate::core_bridge::CoreBridgeState;
+use crate::core_bridge::{CoreBridge, CoreBridgeState};
 use crate::library::{
     get_artwork_cache_dir, thumbnails, LibraryState, LocalAlbum, LocalTrack, MetadataExtractor,
     PlaylistLocalTrack, PlaylistSettings, PlaylistStats, ScanProgress,
@@ -428,6 +428,174 @@ async fn download_audio(url: &str) -> Result<Vec<u8>, String> {
 
     log::info!("[V2] Downloaded {} bytes", all_data.len());
     Ok(all_data)
+}
+
+/// Download audio with exponential backoff and quality fallback.
+///
+/// Attempts up to 4 downloads:
+///   1. Current quality, existing URL (immediate)
+///   2. Current quality, fresh URL (1s backoff)
+///   3. One quality step lower, fresh URL (2s backoff)
+///   4. Lower quality again, fresh URL (4s backoff)
+///
+/// If already at Mp3 (lowest), attempts 3-4 retry at Mp3.
+///
+/// Returns `(audio_data, stream_url_that_worked)` on success, or a
+/// `QualityExhausted:...` structured error string on failure.
+async fn download_with_backoff(
+    initial_url: &str,
+    track_id: u64,
+    initial_quality: Quality,
+    bridge: &CoreBridge,
+) -> Result<(Vec<u8>, StreamUrl), String> {
+    use std::time::Duration;
+
+    struct Attempt {
+        label: &'static str,
+        quality: Quality,
+        use_initial_url: bool,
+        backoff: Duration,
+    }
+
+    let lower_quality = initial_quality.lower().unwrap_or(initial_quality);
+
+    let attempts = [
+        Attempt {
+            label: "1/4 (current quality, existing URL)",
+            quality: initial_quality,
+            use_initial_url: true,
+            backoff: Duration::ZERO,
+        },
+        Attempt {
+            label: "2/4 (current quality, fresh URL)",
+            quality: initial_quality,
+            use_initial_url: false,
+            backoff: Duration::from_secs(1),
+        },
+        Attempt {
+            label: "3/4 (lower quality, fresh URL)",
+            quality: lower_quality,
+            use_initial_url: false,
+            backoff: Duration::from_secs(2),
+        },
+        Attempt {
+            label: "4/4 (lower quality retry, fresh URL)",
+            quality: lower_quality,
+            use_initial_url: false,
+            backoff: Duration::from_secs(4),
+        },
+    ];
+
+    let mut last_error = String::new();
+    let mut saw_server_error = false;
+    let mut lowest_tried = initial_quality;
+
+    for attempt in &attempts {
+        if !attempt.backoff.is_zero() {
+            log::info!(
+                "[V2/BACKOFF] Waiting {}s before attempt {} for track {}",
+                attempt.backoff.as_secs(),
+                attempt.label,
+                track_id
+            );
+            tokio::time::sleep(attempt.backoff).await;
+        }
+
+        // Track the lowest quality we've tried
+        if attempt.quality < lowest_tried {
+            lowest_tried = attempt.quality;
+        }
+
+        let (url, stream_url_result) = if attempt.use_initial_url {
+            (initial_url.to_string(), None)
+        } else {
+            log::info!(
+                "[V2/BACKOFF] Fetching fresh URL for track {} at quality {} (attempt {})",
+                track_id,
+                attempt.quality.label(),
+                attempt.label
+            );
+            match bridge.get_stream_url(track_id, attempt.quality).await {
+                Ok(su) => {
+                    let url = su.url.clone();
+                    (url, Some(su))
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[V2/BACKOFF] get_stream_url failed for attempt {}: {}",
+                        attempt.label,
+                        e
+                    );
+                    last_error = e;
+                    continue;
+                }
+            }
+        };
+
+        log::info!(
+            "[V2/BACKOFF] Attempt {} for track {} (quality: {})",
+            attempt.label,
+            track_id,
+            attempt.quality.label()
+        );
+
+        match download_audio(&url).await {
+            Ok(data) => {
+                // Build the StreamUrl to return: either the fresh one or a
+                // synthetic one from the initial URL.
+                let final_url = match stream_url_result {
+                    Some(su) => su,
+                    None => {
+                        // First attempt used the initial URL. Build a
+                        // placeholder StreamUrl — the caller already has
+                        // the original stream_url, but we need to return
+                        // *something*. We fetch a fresh one at the same
+                        // quality so caller has accurate metadata.
+                        bridge
+                            .get_stream_url(track_id, attempt.quality)
+                            .await
+                            .unwrap_or(StreamUrl {
+                                url: url.clone(),
+                                format_id: attempt.quality.id(),
+                                mime_type: String::new(),
+                                sampling_rate: 0.0,
+                                bit_depth: None,
+                                track_id,
+                                restrictions: vec![],
+                            })
+                    }
+                };
+                log::info!(
+                    "[V2/BACKOFF] Success on attempt {} for track {} ({} bytes)",
+                    attempt.label,
+                    track_id,
+                    data.len()
+                );
+                return Ok((data, final_url));
+            }
+            Err(e) => {
+                // Check for server errors (502, 503, 504)
+                if e.contains("502") || e.contains("503") || e.contains("504") {
+                    saw_server_error = true;
+                }
+                log::warn!(
+                    "[V2/BACKOFF] Attempt {} failed for track {}: {}",
+                    attempt.label,
+                    track_id,
+                    e
+                );
+                last_error = e;
+            }
+        }
+    }
+
+    Err(format!(
+        "QualityExhausted:requested={},lowest_tried={},server_error={},detail={}",
+        initial_quality.label(),
+        lowest_tried.label(),
+        saw_server_error,
+        last_error
+    ))
 }
 
 /// Stream info from probing a URL (HEAD + first 64KB)
@@ -7715,6 +7883,7 @@ pub struct V2PlayTrackResult {
 pub async fn v2_play_track(
     track_id: u64,
     quality: Option<String>,
+    force_lowest_quality: Option<bool>,
     duration_secs: Option<u64>,
     bridge: State<'_, CoreBridgeState>,
     offline_cache: State<'_, OfflineCacheState>,
@@ -7755,6 +7924,15 @@ pub async fn v2_play_track(
         } else {
             preferred_quality
         }
+    };
+
+    // Override quality to Mp3 if force_lowest_quality is set (used by
+    // QualityFallbackModal "always_fallback" preference)
+    let final_quality = if force_lowest_quality.unwrap_or(false) {
+        log::info!("[V2] force_lowest_quality=true, using Mp3");
+        Quality::Mp3
+    } else {
+        final_quality
     };
 
     // Check streaming settings
@@ -8012,64 +8190,23 @@ pub async fn v2_play_track(
         let stream_info = match v2_get_stream_info(&stream_url.url).await {
             Ok(info) => info,
             Err(e) => {
-                // Probe failed (CDN EOF, etc.) — fall through to standard download path
+                // Probe failed (CDN EOF, etc.) — fall through to full download with backoff
                 log::warn!(
-                    "[V2/STREAMING] Probe failed for track {}: {}. Falling back to full download.",
+                    "[V2/STREAMING] Probe failed for track {}: {}. Falling back to full download with backoff.",
                     track_id,
                     e
                 );
-                // Get a fresh URL using the quality we actually received
                 let effective_quality = Quality::from_id(stream_url.format_id)
                     .unwrap_or(final_quality);
-                let retry_url = bridge_guard
-                    .get_stream_url(track_id, effective_quality)
-                    .await
-                    .map_err(RuntimeError::Internal)?;
-                stream_url = retry_url;
-                let audio_data = match download_audio(&stream_url.url).await {
-                    Ok(data) => data,
-                    Err(e2) => {
-                        // Fresh URL at same quality also failed — try lower quality
-                        if let Some(fallback_q) = effective_quality.lower() {
-                            log::warn!(
-                                "[V2/DOWNLOAD] Streaming fallback also failed for track {}: {}. Trying quality fallback to {}",
-                                track_id, e2, fallback_q.label()
-                            );
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                            let fallback_url = bridge_guard
-                                .get_stream_url(track_id, fallback_q)
-                                .await
-                                .map_err(RuntimeError::Internal)?;
-                            log::info!(
-                                "[V2/DOWNLOAD] Streaming quality fallback: {} → {} (format_id={})",
-                                final_quality.label(),
-                                fallback_q.label(),
-                                fallback_url.format_id
-                            );
-                            stream_url = fallback_url;
-                            match download_audio(&stream_url.url).await {
-                                Ok(data) => data,
-                                Err(e3) => {
-                                    log::warn!("[V2/DOWNLOAD] Quality fallback also failed for track {}: {}", track_id, e3);
-                                    return Err(RuntimeError::Internal(format!(
-                                        "Download failed after quality fallback: {}",
-                                        e3
-                                    )));
-                                }
-                            }
-                        } else {
-                            log::warn!(
-                                "[V2/DOWNLOAD] Retry also failed for track {}: {}",
-                                track_id,
-                                e2
-                            );
-                            return Err(RuntimeError::Internal(format!(
-                                "Download failed after retry: {}",
-                                e2
-                            )));
-                        }
-                    }
-                };
+                let (audio_data, worked_url) = download_with_backoff(
+                    &stream_url.url,
+                    track_id,
+                    effective_quality,
+                    &*bridge_guard,
+                )
+                .await
+                .map_err(RuntimeError::Internal)?;
+                stream_url = worked_url;
                 let data_size = audio_data.len();
                 if !streaming_only {
                     cache.insert(track_id, audio_data.clone());
@@ -8178,62 +8315,17 @@ pub async fn v2_play_track(
         track_id,
         !streaming_only
     );
-    let audio_data = match download_audio(&stream_url.url).await {
-        Ok(data) => data,
-        Err(e) => {
-            log::warn!(
-                "[V2/DOWNLOAD] First attempt failed for track {}: {}",
-                track_id,
-                e
-            );
-            // Retry with fresh URL — CDN edge may have returned premature EOF.
-            // Use the quality we actually received (which may differ from requested
-            // due to get_stream_url_with_fallback, e.g. UltraHiRes → HiRes).
-            let effective_quality = Quality::from_id(stream_url.format_id)
-                .unwrap_or(final_quality);
-            log::info!(
-                "[V2/DOWNLOAD] Retrying track {} with fresh URL (effective quality: {})...",
-                track_id,
-                effective_quality.label()
-            );
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            let retry_url = bridge_guard
-                .get_stream_url(track_id, effective_quality)
-                .await
-                .map_err(RuntimeError::Internal)?;
-            match download_audio(&retry_url.url).await {
-                Ok(data) => data,
-                Err(e2) => {
-                    // Both attempts at current quality failed — try lower quality
-                    if let Some(fallback_q) = effective_quality.lower() {
-                        log::warn!(
-                            "[V2/DOWNLOAD] Retry also failed for track {}: {}. Trying quality fallback to {}",
-                            track_id, e2, fallback_q.label()
-                        );
-                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        let fallback_url = bridge_guard
-                            .get_stream_url(track_id, fallback_q)
-                            .await
-                            .map_err(RuntimeError::Internal)?;
-                        log::info!(
-                            "[V2/DOWNLOAD] Quality fallback: {} → {} (format_id={})",
-                            final_quality.label(),
-                            fallback_q.label(),
-                            fallback_url.format_id
-                        );
-                        download_audio(&fallback_url.url)
-                            .await
-                            .map_err(RuntimeError::Internal)?
-                    } else {
-                        return Err(RuntimeError::Internal(format!(
-                            "Download failed after retry (no lower quality available): {}",
-                            e2
-                        )));
-                    }
-                }
-            }
-        }
-    };
+    let effective_quality = Quality::from_id(stream_url.format_id)
+        .unwrap_or(final_quality);
+    let (audio_data, worked_url) = download_with_backoff(
+        &stream_url.url,
+        track_id,
+        effective_quality,
+        &*bridge_guard,
+    )
+    .await
+    .map_err(RuntimeError::Internal)?;
+    stream_url = worked_url;
     let data_size = audio_data.len();
 
     // Cache it (unless streaming_only mode)
