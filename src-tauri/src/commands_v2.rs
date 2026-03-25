@@ -8674,6 +8674,42 @@ pub fn v2_set_sync_audio_on_startup(
         .map_err(RuntimeError::Internal)
 }
 
+/// Get quality fallback behavior (V2)
+#[tauri::command]
+pub fn v2_get_quality_fallback_behavior(
+    audio_settings: State<'_, AudioSettingsState>,
+) -> Result<String, RuntimeError> {
+    let guard = audio_settings
+        .store
+        .lock()
+        .map_err(|e| RuntimeError::Internal(format!("Lock error: {}", e)))?;
+    let store = guard
+        .as_ref()
+        .ok_or(RuntimeError::UserSessionNotActivated)?;
+    store
+        .get_quality_fallback_behavior()
+        .map_err(RuntimeError::Internal)
+}
+
+/// Set quality fallback behavior (V2)
+#[tauri::command]
+pub fn v2_set_quality_fallback_behavior(
+    behavior: String,
+    audio_settings: State<'_, AudioSettingsState>,
+) -> Result<(), RuntimeError> {
+    log::info!("Command: v2_set_quality_fallback_behavior {}", behavior);
+    let guard = audio_settings
+        .store
+        .lock()
+        .map_err(|e| RuntimeError::Internal(format!("Lock error: {}", e)))?;
+    let store = guard
+        .as_ref()
+        .ok_or(RuntimeError::UserSessionNotActivated)?;
+    store
+        .set_quality_fallback_behavior(&behavior)
+        .map_err(RuntimeError::Internal)
+}
+
 /// Set preferred sample rate (V2)
 #[tauri::command]
 pub async fn v2_set_audio_sample_rate(
