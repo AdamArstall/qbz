@@ -1609,6 +1609,8 @@
         "fedora": "Fedora / RHEL",
         "arch": "Arch / Manjaro / EndeavourOS",
         "opensuse": "openSUSE",
+        "gentoo": "Gentoo / Funtoo (OpenRC)",
+        "void": "Void Linux (runit)",
         "other": "Autre"
       },
       "otherHint": "Assurez-vous que ces paquets (ou équivalents) sont installés : pipewire, pipewire-pulse, wireplumber, alsa-utils"
@@ -1688,7 +1690,8 @@
       "failed": "Échoué",
       "skip": "Ignorer",
       "rollbackTitle": "Restaurer la sauvegarde",
-      "rollbackHint": "Exécutez ces commandes pour restaurer votre configuration précédente :"
+      "rollbackHint": "Exécutez ces commandes pour restaurer votre configuration précédente :",
+      "postCloseHint": "Fermez d'abord cet assistant, puis vérifiez dans un terminal. Ces instructions sont pour référence — vous pouvez toujours rouvrir l'assistant depuis Paramètres > Audio."
     },
     "done": {
       "title": "Configuration terminée",

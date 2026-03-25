@@ -1682,6 +1682,8 @@
         "fedora": "Fedora / RHEL",
         "arch": "Arch / Manjaro / EndeavourOS",
         "opensuse": "openSUSE",
+        "gentoo": "Gentoo / Funtoo (OpenRC)",
+        "void": "Void Linux (runit)",
         "other": "Otra"
       },
       "otherHint": "Asegúrate de tener instalados (o equivalentes): pipewire, pipewire-pulse, wireplumber, alsa-utils"
@@ -1761,7 +1763,8 @@
       "failed": "Falló",
       "skip": "Omitir",
       "rollbackTitle": "Restaurar Backup",
-      "rollbackHint": "Ejecuta estos comandos para restaurar tu configuración anterior:"
+      "rollbackHint": "Ejecuta estos comandos para restaurar tu configuración anterior:",
+      "postCloseHint": "Cierra este asistente primero, luego verifica en una terminal. Estas instrucciones son de referencia — siempre puedes reabrir el asistente desde Configuración > Audio."
     },
     "done": {
       "title": "Configuración Completa",

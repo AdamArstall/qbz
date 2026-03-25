@@ -5,7 +5,7 @@
   import WizardStepper, { type Step } from './wizard/WizardStepper.svelte';
   import CommandBlock from './wizard/CommandBlock.svelte';
   import WarningBanner from './wizard/WarningBanner.svelte';
-  import DistroSelector from './wizard/DistroSelector.svelte';
+  import DistroSelector, { restartCommands, statusCommands } from './wizard/DistroSelector.svelte';
   import BitPerfectAppSelector from './wizard/BitPerfectAppSelector.svelte';
 
   // DAC capabilities from Tauri backend
@@ -404,7 +404,7 @@
             <div class="step-content">
               <CommandBlock
                 label={$t('dacWizard.precheck.hint')}
-                command="systemctl --user status pipewire pipewire-pulse wireplumber"
+                command={statusCommands[selectedDistro] || statusCommands['other']}
               />
 
               <p class="inactive-warning">{$t('dacWizard.precheck.inactiveWarning')}</p>
@@ -626,7 +626,7 @@
           {:else if currentStep === 'restart'}
             <div class="step-content">
               <CommandBlock
-                command="systemctl --user restart pipewire pipewire-pulse wireplumber"
+                command={restartCommands[selectedDistro] || restartCommands['other']}
               />
 
               <WarningBanner variant="info" body={$t('dacWizard.restart.hint')} />
@@ -639,6 +639,8 @@
 
           {:else if currentStep === 'verify'}
             <div class="step-content">
+              <WarningBanner variant="info" body={$t('dacWizard.verify.postCloseHint')} />
+
               <div class="verify-instructions">
                 <pre>{$t('dacWizard.verify.instructions')}</pre>
               </div>
@@ -658,7 +660,7 @@
                       'rm -rf ~/.config/pipewire ~/.config/wireplumber',
                       'cp -a "$BACKUP/pipewire" ~/.config/',
                       'cp -a "$BACKUP/wireplumber" ~/.config/',
-                      'systemctl --user restart pipewire pipewire-pulse wireplumber'
+                      restartCommands[selectedDistro] || restartCommands['other']
                     ]}
                   />
 
