@@ -285,7 +285,9 @@
     "bookletError": "Impossible de charger le livret",
     "bookletFitWidth": "Ajuster à la largeur",
     "bookletRotate": "Pivoter",
-    "bookletDownload": "Enregistrer le livret"
+    "bookletDownload": "Enregistrer le livret",
+    "sameArtist": "Du même artiste...",
+    "seeFullDiscography": "Voir la discographie complète"
   },
   "artist": {
     "albums": "Albums",
@@ -418,10 +420,6 @@
     },
     "suggestSongs": "Suggérer des titres pour cette playlist",
     "suggestionsLargePlaylist": "Cette playlist contient de nombreux titres. Appuyer sur le bouton pour générer des suggestions.",
-    "trackTitle": "Titre",
-    "trackAlbum": "Album",
-    "trackDuration": "Durée",
-    "trackQuality": "Qualité",
     "removeCustomArtwork": "Supprimer l'illustration personnalisée",
     "setCustomArtwork": "Définir une illustration personnalisée",
     "label": "Playlist",
@@ -621,6 +619,7 @@
     "select": "Sélectionner",
     "cancelSelection": "Annuler la sélection",
     "makeAvailableOffline": "Rendre disponible hors ligne",
+    "refreshOfflineCopy": "Rafraîchir la copie hors-ligne",
     "share": "Partager",
     "viewAlbum": "Voir l'album",
     "viewArtist": "Voir l'artiste",
@@ -654,7 +653,10 @@
     "loading": "Chargement...",
     "loadMore": "Charger plus",
     "collapse": "Réduire la barre latérale",
-    "expand": "Développer la barre latérale"
+    "expand": "Développer la barre latérale",
+    "moreOptions": "Plus d'options",
+    "shareQobuz": "Partager (Qobuz)",
+    "albumCredits": "Crédits de l'album"
   },
   "settings": {
     "title": "Paramètres",
@@ -1859,7 +1861,16 @@
     "title": "DailyQ",
     "subtitle": "Basé sur vos écoutes récentes.",
     "cardDesc": "Sublimez votre journée avec une sélection musicale sur mesure.",
+    "actions": {
+      "saveAsPlaylist": "Enregistrer en tant que playlist"
+    },
     "algorithmInfo": "Propulsé par l'algorithme de suggestion Qobuz™, composé à partir de votre historique d'écoute local.",
+    "result": {
+      "algorithm": "Algorithme",
+      "count": "{count} titres",
+      "empty": "Aucun titre suggéré",
+      "unknownArtist": "Artiste inconnu"
+    },
     "errors": {
       "fetchFailed": "Impossible de charger les suggestions dynamiques.",
       "insufficientHistory": "Pas assez d'historique d'écoute pour génerer des suggestions. Ecoutez de la musique et réessayez plus tard."
@@ -1868,7 +1879,7 @@
   "weeklyMixes": {
     "title": "WeeklyQ",
     "subtitle": "Basé sur vos écoutes hebdomadaires.",
-    "cardDesc": "Profitez <strong>chaque vendredi</strong> d'un nouveau mix personnalisé."
+    "cardDesc": "Profitez chaque vendredi d'un nouveau mix personnalisé."
   },
   "favMixes": {
     "title": "FavQ",
@@ -1944,5 +1955,11 @@
     "thisDevice": "Cet appareil",
     "experimentalWarning": "Qobuz Connect est expérimental. Des bugs sont probables — veuillez les signaler dans la section correspondante.",
     "localLibraryWarning": "Lorsque Qobuz Connect est actif, la bibliothèque locale n'est pas compatible en raison de l'incompatibilité de Qobuz Connect avec le contenu non-Qobuz."
+  },
+  "tracklist": {
+    "title": "Titre",
+    "album": "Album",
+    "duration": "Durée",
+    "quality": "Qualité"
   }
 }
