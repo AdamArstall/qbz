@@ -24,7 +24,7 @@ RDEPEND="
 	x11-libs/gtk+:3
 	media-libs/alsa-lib
 	dev-libs/openssl
-	dev-libs/libappindicator:3
+	dev-libs/libayatana-appindicator
 	x11-libs/libxkbcommon
 	gnome-base/librsvg:2
 	pipewire? (
