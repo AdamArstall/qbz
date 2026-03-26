@@ -424,51 +424,60 @@ const GENTOO_INSTALL_SRC = 'emerge media-sound/qbz'
 function GentooContent() {
   return (
     <div className="download-item">
-      <div className="download-item__header">
-        <div className="download-item__info">
-          <span className="download-item__label">QBZ Overlay</span>
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="download-item__header">
+            <div className="download-item__info">
+              <span className="download-item__label">QBZ Overlay</span>
+            </div>
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
+            Add the QBZ overlay to Portage, then install from source or prebuilt binary.
+          </p>
+          {GENTOO_OVERLAY_CMDS.map((cmd) => (
+            <div key={cmd} className="terminal" style={{ marginBottom: 6 }}>
+              <code>
+                <span className="terminal__prompt">#</span>
+                <span className="terminal__cmd">{cmd}</span>
+              </code>
+              <CopyButton text={cmd} />
+            </div>
+          ))}
+          <div style={{ marginTop: 16 }}>
+            <div className="download-meta__name" style={{ fontSize: 14, marginBottom: 8 }}>Install (prebuilt binary)</div>
+            <div className="terminal">
+              <code>
+                <span className="terminal__prompt">#</span>
+                <span className="terminal__cmd">{GENTOO_INSTALL_BIN}</span>
+              </code>
+              <CopyButton text={GENTOO_INSTALL_BIN} />
+            </div>
+          </div>
+          <details className="deps-details" style={{ marginTop: 12 }}>
+            <summary className="deps-summary">Or build from source?</summary>
+            <div className="terminal terminal--deps">
+              <code>
+                <span className="terminal__prompt">#</span>
+                <span className="terminal__cmd">{GENTOO_INSTALL_SRC}</span>
+              </code>
+              <CopyButton text={GENTOO_INSTALL_SRC} />
+            </div>
+          </details>
+          <a
+            className="btn btn-ghost btn-sm"
+            href="https://github.com/vicrodh/qbz-overlay"
+            target="_blank"
+            rel="noreferrer"
+          >
+            View overlay repo
+          </a>
         </div>
+        <img
+          src="/assets/images/Larry-the-cow-full.svg"
+          alt="Larry the Cow"
+          style={{ width: 180, height: 'auto', opacity: 0.85, flexShrink: 0, alignSelf: 'center' }}
+        />
       </div>
-      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
-        Add the QBZ overlay to Portage, then install from source or prebuilt binary.
-      </p>
-      {GENTOO_OVERLAY_CMDS.map((cmd) => (
-        <div key={cmd} className="terminal" style={{ marginBottom: 6 }}>
-          <code>
-            <span className="terminal__prompt">#</span>
-            <span className="terminal__cmd">{cmd}</span>
-          </code>
-          <CopyButton text={cmd} />
-        </div>
-      ))}
-      <div style={{ marginTop: 16 }}>
-        <div className="download-meta__name" style={{ fontSize: 14, marginBottom: 8 }}>Install (prebuilt binary)</div>
-        <div className="terminal">
-          <code>
-            <span className="terminal__prompt">#</span>
-            <span className="terminal__cmd">{GENTOO_INSTALL_BIN}</span>
-          </code>
-          <CopyButton text={GENTOO_INSTALL_BIN} />
-        </div>
-      </div>
-      <details className="deps-details" style={{ marginTop: 12 }}>
-        <summary className="deps-summary">Or build from source?</summary>
-        <div className="terminal terminal--deps">
-          <code>
-            <span className="terminal__prompt">#</span>
-            <span className="terminal__cmd">{GENTOO_INSTALL_SRC}</span>
-          </code>
-          <CopyButton text={GENTOO_INSTALL_SRC} />
-        </div>
-      </details>
-      <a
-        className="btn btn-ghost btn-sm"
-        href="https://github.com/vicrodh/qbz-overlay"
-        target="_blank"
-        rel="noreferrer"
-      >
-        View overlay repo
-      </a>
     </div>
   )
 }
