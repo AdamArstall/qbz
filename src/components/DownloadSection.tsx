@@ -509,12 +509,6 @@ function MacOSContent({ downloads }: { downloads: DownloadItem[] }) {
             No DMG available in the current release.
           </p>
         )}
-        <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 16 }}>
-          {t('downloads.macos.credit')}{' '}
-          <a href="https://github.com/afonsojramos" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
-            @afonsojramos
-          </a>
-        </p>
       </div>
     </div>
   )
