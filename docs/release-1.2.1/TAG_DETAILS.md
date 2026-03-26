@@ -81,3 +81,7 @@ QBZ is a Linux-first application. Initial macOS support is experimental and limi
 
   - rustls-webpki 0.103.9 -> 0.103.10 (CRL Distribution Point fix)
   - aws-lc-sys 0.38.0 -> 0.39.0 (X.509 Name Constraints Bypass, CRL Scope Check fix)
+
+---
+
+Thanks to [@GwendalBeaumont](https://github.com/GwendalBeaumont) for the i18n contributions and [@afonsojramos](https://github.com/afonsojramos) for driving the macOS port.
