@@ -758,7 +758,12 @@
       "streamBufferDesc": "Démarrez la lecture plus rapidement lorsque le titre n'est pas dans le cache. La recherche peut être limitée pendant la mise en tampon initiale.",
       "streamBufferSeconds": "Secondes de tampon avant de démarrer la lecture ({seconds}s)",
       "disableCache": "Désactiver le cache de lecture",
-      "disableCacheDesc": "Désactive le cache temporaire. Non recommandé sans connexion rapide. Les titres de la bibliothèque hors ligne sont toujours lus en premier."
+      "disableCacheDesc": "Désactive le cache temporaire. Non recommandé sans connexion rapide. Les titres de la bibliothèque hors ligne sont toujours lus en premier.",
+      "qualityFallback": "Quand les tentatives de qualite echouent",
+      "qualityFallbackDesc": "Que faire quand les serveurs Qobuz ne peuvent pas servir le titre dans aucune qualite",
+      "qualityFallbackAsk": "Me demander",
+      "qualityFallbackAlways": "Toujours essayer la qualite la plus basse",
+      "qualityFallbackSkip": "Toujours passer le titre"
     },
     "appearance": {
       "title": "Apparence",
@@ -1155,7 +1160,21 @@
       "verboseLogDisabled": "Capture de logs detaillee desactivee",
       "qconnectDevTools": "Outils dev Qobuz Connect",
       "qconnectDevToolsShow": "Afficher le bouton du panneau",
-      "qconnectDevToolsDesc": "Affiche le bouton de connexion avancée dans la barre du lecteur"
+      "qconnectDevToolsDesc": "Affiche le bouton de connexion avancée dans la barre du lecteur",
+      "diagnostics": {
+        "title": "Diagnostic système",
+        "description": "Comparer les paramètres enregistrés avec l'état d'exécution",
+        "refresh": "Actualiser",
+        "export": "Exporter dans le presse-papiers",
+        "exported": "Copié !",
+        "sectionAudio": "Audio",
+        "sectionGraphics": "Graphiques et rendu",
+        "sectionEnv": "Variables d'environnement",
+        "colSetting": "Paramètre",
+        "colSaved": "Enregistré",
+        "colRuntime": "Exécution",
+        "colStatus": "Statut"
+      }
     },
     "blacklist": {
       "title": "Liste noire des artistes",
@@ -1461,6 +1480,7 @@
     "trackNotAvailable": "Ce titre n'est pas disponible hors ligne",
     "featureDisabled": "Cette fonctionnalité nécessite une connexion Internet",
     "startWithoutLogin": "Démarrer hors ligne (pas d'accès aux services Qobuz™)",
+    "noPreviousSession": "Vous devez vous connecter au moins une fois avant d'utiliser le mode hors ligne. Connectez-vous à Internet et identifiez-vous pour créer votre profil.",
     "noNetworkToast": "Aucune connexion Internet disponible",
     "checkingNetwork": "Vérification de la connexion réseau...",
     "available": "Entièrement disponible hors ligne",
@@ -1475,7 +1495,12 @@
     "allowAccumulatedScrobblingDesc": "Mettre les scrobbles en file d'attente pour plus tard lorsque vous serez de nouveau en ligne",
     "scrobbleTimeLimit": "Last.fm accepte les scrobbles jusqu'à 2 semaines",
     "showNetworkFolders": "Afficher le contenu du dossier réseau",
-    "showNetworkFoldersDesc": "Afficher le contenu des dossiers montés en réseau (NAS, Samba, etc.) en mode hors ligne manuel"
+    "showNetworkFoldersDesc": "Afficher le contenu des dossiers montés en réseau (NAS, Samba, etc.) en mode hors ligne manuel",
+    "checkNow": "Verifier maintenant"
+  },
+  "degraded": {
+    "title": "Service degrade",
+    "description": "Les serveurs Qobuz rencontrent des problemes. La lecture peut necessiter plus de tentatives ou une qualite inferieure."
   },
   "download": {
     "makeAvailable": "Rendre disponible hors ligne",
@@ -1625,6 +1650,8 @@
         "fedora": "Fedora / RHEL",
         "arch": "Arch / Manjaro / EndeavourOS",
         "opensuse": "openSUSE",
+        "gentoo": "Gentoo / Funtoo (OpenRC)",
+        "void": "Void Linux (runit)",
         "other": "Autre"
       },
       "otherHint": "Assurez-vous que ces paquets (ou équivalents) sont installés : pipewire, pipewire-pulse, wireplumber, alsa-utils"
@@ -1704,7 +1731,8 @@
       "failed": "Échoué",
       "skip": "Ignorer",
       "rollbackTitle": "Restaurer la sauvegarde",
-      "rollbackHint": "Exécutez ces commandes pour restaurer votre configuration précédente :"
+      "rollbackHint": "Exécutez ces commandes pour restaurer votre configuration précédente :",
+      "postCloseHint": "Fermez d'abord cet assistant, puis vérifiez dans un terminal. Ces instructions sont pour référence — vous pouvez toujours rouvrir l'assistant depuis Paramètres > Audio."
     },
     "done": {
       "title": "Configuration terminée",
@@ -1961,5 +1989,14 @@
     "album": "Album",
     "duration": "Durée",
     "quality": "Qualité"
+  },
+  "qualityFallback": {
+    "title": "Problème de streaming",
+    "body": "Qobuz a des difficultés à servir \"{track}\". Tous les niveaux de qualité ont echoué. Essayer avec la qualité la plus basse disponible ?",
+    "tryLower": "Essayer une qualité inférieure",
+    "skip": "Passer le titre",
+    "rememberChoice": "Se souvenir de mon choix",
+    "autoRetrying": "Nouvel essai avec une qualité inférieure...",
+    "autoSkipping": "Titre passé (problème serveur)..."
   }
 }

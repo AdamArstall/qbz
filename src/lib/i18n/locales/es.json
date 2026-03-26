@@ -786,7 +786,12 @@
       "streamBufferDesc": "Inicia la reproducción más rápido cuando la pista no está en caché. La búsqueda puede estar limitada durante el buffering inicial.",
       "streamBufferSeconds": "Segundos a almacenar antes de iniciar reproducción ({seconds}s)",
       "disableCache": "Deshabilitar Caché de Reproducción",
-      "disableCacheDesc": "Deshabilita el caché temporal. No recomendado sin conexión rápida. Las pistas de biblioteca offline siempre se reproducen primero."
+      "disableCacheDesc": "Deshabilita el caché temporal. No recomendado sin conexión rápida. Las pistas de biblioteca offline siempre se reproducen primero.",
+      "qualityFallback": "Cuando fallan los reintentos de calidad",
+      "qualityFallbackDesc": "Que hacer cuando los servidores de Qobuz no pueden servir la pista en ninguna calidad",
+      "qualityFallbackAsk": "Preguntarme",
+      "qualityFallbackAlways": "Siempre intentar calidad mas baja",
+      "qualityFallbackSkip": "Siempre saltar pista"
     },
     "appearance": {
       "title": "Apariencia",
@@ -1215,7 +1220,21 @@
       "verboseLogDisabled": "Captura de logs detallada desactivada",
       "qconnectDevTools": "Herramientas de Qobuz Connect",
       "qconnectDevToolsShow": "Mostrar botón del panel",
-      "qconnectDevToolsDesc": "Muestra el botón de la pantalla avanzada de conexión en el reproductor"
+      "qconnectDevToolsDesc": "Muestra el botón de la pantalla avanzada de conexión en el reproductor",
+      "diagnostics": {
+        "title": "Diagnóstico del sistema",
+        "description": "Comparar configuración guardada contra estado de ejecución",
+        "refresh": "Actualizar",
+        "export": "Exportar al portapapeles",
+        "exported": "¡Copiado!",
+        "sectionAudio": "Audio",
+        "sectionGraphics": "Gráficos y renderizado",
+        "sectionEnv": "Variables de entorno",
+        "colSetting": "Configuración",
+        "colSaved": "Guardado",
+        "colRuntime": "Ejecución",
+        "colStatus": "Estado"
+      }
     },
     "blacklist": {
       "title": "Lista Negra de Artistas",
@@ -1547,6 +1566,7 @@
     "trackNotAvailable": "Esta pista no esta disponible offline",
     "featureDisabled": "Esta funcion requiere conexion a internet",
     "startWithoutLogin": "Iniciar en modo offline (sin acceso a los servicios de Qobuz™)",
+    "noPreviousSession": "Necesitas iniciar sesión al menos una vez antes de usar el modo offline. Conéctate a internet e inicia sesión para crear tu perfil.",
     "noNetworkToast": "No hay conexion a internet disponible",
     "checkingNetwork": "Verificando conexion a internet...",
     "available": "Totalmente Disponible Offline",
@@ -1561,7 +1581,12 @@
     "allowAccumulatedScrobblingDesc": "Almacenar scrobbles para enviar cuando vuelvas a estar en linea",
     "scrobbleTimeLimit": "Last.fm acepta scrobbles de hasta 2 semanas de antiguedad",
     "showNetworkFolders": "Mostrar Contenido de Carpetas de Red",
-    "showNetworkFoldersDesc": "Mostrar contenido de carpetas montadas en red (NAS, Samba, etc.) mientras estas en modo offline manual"
+    "showNetworkFoldersDesc": "Mostrar contenido de carpetas montadas en red (NAS, Samba, etc.) mientras estas en modo offline manual",
+    "checkNow": "Verificar ahora"
+  },
+  "degraded": {
+    "title": "Servicio degradado",
+    "description": "Los servidores de Qobuz estan experimentando problemas. La reproduccion puede requerir mas reintentos o menor calidad."
   },
   "download": {
     "makeAvailable": "Hacer disponible offline",
@@ -1687,6 +1712,8 @@
         "fedora": "Fedora / RHEL",
         "arch": "Arch / Manjaro / EndeavourOS",
         "opensuse": "openSUSE",
+        "gentoo": "Gentoo / Funtoo (OpenRC)",
+        "void": "Void Linux (runit)",
         "other": "Otra"
       },
       "otherHint": "Asegúrate de tener instalados (o equivalentes): pipewire, pipewire-pulse, wireplumber, alsa-utils"
@@ -1766,7 +1793,8 @@
       "failed": "Falló",
       "skip": "Omitir",
       "rollbackTitle": "Restaurar Backup",
-      "rollbackHint": "Ejecuta estos comandos para restaurar tu configuración anterior:"
+      "rollbackHint": "Ejecuta estos comandos para restaurar tu configuración anterior:",
+      "postCloseHint": "Cierra este asistente primero, luego verifica en una terminal. Estas instrucciones son de referencia — siempre puedes reabrir el asistente desde Configuración > Audio."
     },
     "done": {
       "title": "Configuración Completa",
@@ -2149,5 +2177,14 @@
     "album": "Album",
     "duration": "Duración",
     "quality": "Calidad"
+  },
+  "qualityFallback": {
+    "title": "Problema de streaming",
+    "body": "Qobuz tiene problemas para servir \"{track}\". Todos los niveles de calidad fallaron. Intentar con la calidad mas baja disponible?",
+    "tryLower": "Intentar calidad mas baja",
+    "skip": "Saltar pista",
+    "rememberChoice": "Recordar mi eleccion",
+    "autoRetrying": "Reintentando con calidad mas baja...",
+    "autoSkipping": "Saltando pista (problema del servidor)..."
   }
 }

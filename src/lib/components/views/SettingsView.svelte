@@ -12,6 +12,7 @@
   import DACSetupWizard from '../DACSetupWizard.svelte';
   import RemoteControlSetupGuide from '../RemoteControlSetupGuide.svelte';
   import LogsModal from '../LogsModal.svelte';
+  import DiagnosticsPanel from '../DiagnosticsPanel.svelte';
   import VolumeSlider from '../VolumeSlider.svelte';
   import UpdateCheckResultModal from '../updates/UpdateCheckResultModal.svelte';
   import WhatsNewModal from '../updates/WhatsNewModal.svelte';
@@ -62,9 +63,14 @@
     setAllowAccumulatedScrobbling,
     setShowNetworkFoldersInManualOffline,
     checkNetwork,
+    refreshStatus,
     type OfflineStatus,
     type OfflineSettings
   } from '$lib/stores/offlineStore';
+  import {
+    subscribe as subscribeDegraded,
+    isDegraded
+  } from '$lib/stores/degradedStore';
   import { showToast } from '$lib/stores/toastStore';
   import {
     enableVerboseCapture,
@@ -298,6 +304,9 @@
   // Offline mode state
   let offlineStatus = $state<OfflineStatus>(getOfflineStatus());
   let offlineSettings = $state<OfflineSettings>(getOfflineSettings());
+
+  // Degraded service state
+  let isDegradedState = $state(isDegraded());
 
   // Flatpak detection state
   let isFlatpak = $state(false);
@@ -746,6 +755,7 @@
   let streamFirstTrack = $state(false);
   let streamBufferSeconds = $state(3);
   let streamingOnly = $state(false);
+  let qualityFallbackBehavior = $state<string>('ask');
   let limitQualityToDevice = $state(false);  // Re-enabled in 1.2.x with manual per-device config
   let deviceMaxSampleRate = $state<number | null>(null);  // Per-device max sample rate
 
@@ -1496,6 +1506,11 @@
       offlineSettings = getOfflineSettings();
     });
 
+    // Subscribe to degraded service state changes
+    const unsubscribeDegraded = subscribeDegraded(() => {
+      isDegradedState = isDegraded();
+    });
+
     // Subscribe to title bar state changes
     const unsubscribeTitleBar = subscribeTitleBar(() => {
       hideTitleBar = getHideTitleBar();
@@ -1531,6 +1546,7 @@
         clearInterval(plexAuthPollTimer);
       }
       unsubscribeOffline();
+      unsubscribeDegraded();
       unsubscribeZoom();
       unsubscribeTitleBar();
       unsubscribeSearchBarLoc();
@@ -2371,6 +2387,13 @@
     }
   }
 
+  // Force an immediate network check from the settings view
+  async function handleCheckNow() {
+    await refreshStatus();
+    offlineStatus = getOfflineStatus();
+    offlineSettings = getOfflineSettings();
+  }
+
   // Offline mode handlers
   async function handleManualOfflineChange(enabled: boolean) {
     // If enabling offline mode, just do it directly
@@ -2703,6 +2726,13 @@
       limitQualityToDevice = settings.limit_quality_to_device ?? false;
       gaplessPlayback = settings.gapless_enabled ?? true;
 
+      // Load quality fallback behavior preference
+      try {
+        qualityFallbackBehavior = await invoke<string>('v2_get_quality_fallback_behavior');
+      } catch (fbErr) {
+        console.warn('Failed to load quality fallback behavior:', fbErr);
+      }
+
       // Load per-device sample rate limit
       const deviceId = settings.output_device ?? 'default';
       await loadDeviceSampleRateLimit(deviceId);
@@ -2946,6 +2976,16 @@
       console.log('[Audio] Streaming-only mode changed:', enabled);
     } catch (err) {
       console.error('[Audio] Failed to change streaming-only mode:', err);
+    }
+  }
+
+  async function handleQualityFallbackBehaviorChange(value: string) {
+    qualityFallbackBehavior = value;
+    try {
+      await invoke('v2_set_quality_fallback_behavior', { behavior: value });
+      console.log('[Audio] Quality fallback behavior changed:', value);
+    } catch (err) {
+      console.error('[Audio] Failed to change quality fallback behavior:', err);
     }
   }
 
@@ -4062,12 +4102,39 @@
       />
     </div>
     {/if}
-    <div class="setting-row last">
+    <div class="setting-row">
       <div class="setting-info">
         <span class="setting-label">{$t('settings.playback.streamingOnly')}</span>
         <span class="setting-desc">{$t('settings.playback.streamingOnlyDesc')}</span>
       </div>
       <Toggle enabled={streamingOnly} onchange={handleStreamingOnlyChange} />
+    </div>
+    <div class="setting-row last">
+      <div class="setting-info">
+        <span class="setting-label">{$t('settings.playback.qualityFallback')}</span>
+        <span class="setting-desc">{$t('settings.playback.qualityFallbackDesc')}</span>
+      </div>
+      <Dropdown
+        value={qualityFallbackBehavior === 'always_fallback'
+          ? $t('settings.playback.qualityFallbackAlways')
+          : qualityFallbackBehavior === 'always_skip'
+            ? $t('settings.playback.qualityFallbackSkip')
+            : $t('settings.playback.qualityFallbackAsk')}
+        options={[
+          $t('settings.playback.qualityFallbackAsk'),
+          $t('settings.playback.qualityFallbackAlways'),
+          $t('settings.playback.qualityFallbackSkip')
+        ]}
+        onchange={(label) => {
+          if (label === $t('settings.playback.qualityFallbackAlways')) {
+            handleQualityFallbackBehaviorChange('always_fallback');
+          } else if (label === $t('settings.playback.qualityFallbackSkip')) {
+            handleQualityFallbackBehaviorChange('always_skip');
+          } else {
+            handleQualityFallbackBehaviorChange('ask');
+          }
+        }}
+      />
     </div>
     <!-- Crossfade, Normalize Volume hidden until properly implemented (see issue #29) -->
     <!-- <div class="setting-row">
@@ -4696,7 +4763,18 @@
           {/if}
         </span>
       </div>
+      <button class="check-now-btn" onclick={handleCheckNow}>
+        {$t('offline.checkNow')}
+      </button>
     </div>
+    {#if isDegradedState && !offlineStatus.isOffline}
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label degraded-label">{$t('degraded.title')}</span>
+          <span class="setting-desc">{$t('degraded.description')}</span>
+        </div>
+      </div>
+    {/if}
     <div class="setting-row">
       <div class="setting-info">
         <span class="setting-label">{$t('offline.enableManual')}</span>
@@ -5644,6 +5722,9 @@
       </div>
     {/if}
 
+    <!-- System Diagnostics -->
+    <DiagnosticsPanel />
+
     <!-- Qobuz Connect Dev Tools -->
     <h4 class="subsection-title">{$t('settings.developer.qconnectDevTools')}</h4>
     <div class="setting-row">
@@ -6524,6 +6605,27 @@ flatpak override --user --filesystem=/home/USUARIO/Música com.blitzfc.qbz</pre>
   .clear-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .check-now-btn {
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+
+  .check-now-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .degraded-label {
+    color: #fb923c;
   }
 
   .reset-btn {

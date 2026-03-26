@@ -919,6 +919,7 @@
   let updatingArtwork = $state(false);
   let hasDiscogsCredentials = $state(false);
   let isOffline = $state(checkIsOffline());
+  let offlineNoticeDismissed = $state(false);
 
   // Album detail state (for viewing album tracks)
   let selectedAlbum = $state<LocalAlbum | null>(null);
@@ -1412,13 +1413,18 @@
 
       if (isOffline) {
         // When offline, get folders without calling is_network_path (blocks offline)
-        // Use basic folder list command instead
         folders = await invoke<LibraryFolder[]>('v2_library_get_folders_with_metadata');
         console.log('[LocalLibrary] Received folders (offline mode):', folders.length);
 
-        // Mark all network folders as inaccessible, local folders as accessible
+        // Only exclude network folders when there's no network at all.
+        // Manual offline / not-logged-in still has LAN access for NAS/Plex.
+        const excludeNetwork = shouldExcludeNetworkFolders();
         for (const folder of folders) {
-          folderAccessibility.set(folder.id, !folder.isNetwork);
+          if (folder.isNetwork && excludeNetwork) {
+            folderAccessibility.set(folder.id, false);
+          } else {
+            folderAccessibility.set(folder.id, true);
+          }
         }
         folderAccessibility = new Map(folderAccessibility);
       } else {
@@ -3344,10 +3350,13 @@
     </div>
 
     <!-- Offline Notice Banner -->
-    {#if isOffline}
+    {#if isOffline && !offlineNoticeDismissed}
       <div class="offline-notice">
         <AlertCircle size={16} />
         <span>{$t('library.playlistOfflineMode')}</span>
+        <button class="dismiss-btn" onclick={() => offlineNoticeDismissed = true} title="Dismiss">
+          <X size={14} />
+        </button>
       </div>
     {/if}
 
@@ -4443,6 +4452,22 @@
 
   .offline-notice span {
     color: var(--text-primary);
+    flex: 1;
+  }
+
+  .offline-notice .dismiss-btn {
+    background: none;
+    border: none;
+    color: #fbbf24;
+    cursor: pointer;
+    padding: 2px;
+    opacity: 0.6;
+    transition: opacity 150ms ease;
+    flex-shrink: 0;
+  }
+
+  .offline-notice .dismiss-btn:hover {
+    opacity: 1;
   }
 
   /* Scan Progress */

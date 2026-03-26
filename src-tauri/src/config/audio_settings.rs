@@ -51,6 +51,10 @@ pub struct AudioSettings {
     /// Useful when Player::new() may hold stale settings (e.g., after Flatpak updates).
     /// Default: false (most users don't need this).
     pub sync_audio_on_startup: bool,
+    /// User preference for what happens when all quality retries fail.
+    /// Values: "ask" (default), "always_fallback", "always_skip"
+    /// Protected by ADR-003: must survive reset_all() and migrations.
+    pub quality_fallback_behavior: String,
 }
 
 impl Default for AudioSettings {
@@ -74,6 +78,7 @@ impl Default for AudioSettings {
             gapless_enabled: true, // On by default — works for same-format tracks on all backends
             pw_force_bitperfect: false, // Off by default — experimental PipeWire feature
             sync_audio_on_startup: false, // Off by default — opt-in for stale-settings edge case
+            quality_fallback_behavior: "ask".to_string(),
         }
     }
 }
@@ -166,6 +171,10 @@ impl AudioSettingsStore {
             "ALTER TABLE audio_settings ADD COLUMN sync_audio_on_startup INTEGER DEFAULT 0",
             [],
         );
+        let _ = conn.execute(
+            "ALTER TABLE audio_settings ADD COLUMN quality_fallback_behavior TEXT DEFAULT 'ask'",
+            [],
+        );
 
         Ok(Self { conn })
     }
@@ -184,7 +193,7 @@ impl AudioSettingsStore {
     pub fn get_settings(&self) -> Result<AudioSettings, String> {
         self.conn
             .query_row(
-                "SELECT output_device, exclusive_mode, dac_passthrough, preferred_sample_rate, backend_type, alsa_plugin, alsa_hardware_volume, stream_first_track, stream_buffer_seconds, streaming_only, limit_quality_to_device, device_max_sample_rate, normalization_enabled, normalization_target_lufs, gapless_enabled, device_sample_rate_limits, pw_force_bitperfect, sync_audio_on_startup FROM audio_settings WHERE id = 1",
+                "SELECT output_device, exclusive_mode, dac_passthrough, preferred_sample_rate, backend_type, alsa_plugin, alsa_hardware_volume, stream_first_track, stream_buffer_seconds, streaming_only, limit_quality_to_device, device_max_sample_rate, normalization_enabled, normalization_target_lufs, gapless_enabled, device_sample_rate_limits, pw_force_bitperfect, sync_audio_on_startup, quality_fallback_behavior FROM audio_settings WHERE id = 1",
                 [],
                 |row| {
                     // Parse backend_type from JSON string
@@ -222,6 +231,9 @@ impl AudioSettingsStore {
                         gapless_enabled: row.get::<_, Option<i64>>(14)?.unwrap_or(0) != 0,
                         pw_force_bitperfect: row.get::<_, Option<i64>>(16)?.unwrap_or(0) != 0,
                         sync_audio_on_startup: row.get::<_, Option<i64>>(17)?.unwrap_or(0) != 0,
+                        quality_fallback_behavior: row
+                            .get::<_, Option<String>>(18)?
+                            .unwrap_or_else(|| "ask".to_string()),
                     })
                 },
             )
@@ -455,6 +467,29 @@ impl AudioSettingsStore {
         Ok(())
     }
 
+    pub fn get_quality_fallback_behavior(&self) -> Result<String, String> {
+        let settings = self.get_settings()?;
+        let value = &settings.quality_fallback_behavior;
+        match value.as_str() {
+            "ask" | "always_fallback" | "always_skip" => Ok(value.clone()),
+            _ => Ok("ask".to_string()),
+        }
+    }
+
+    pub fn set_quality_fallback_behavior(&self, behavior: &str) -> Result<(), String> {
+        match behavior {
+            "ask" | "always_fallback" | "always_skip" => {}
+            _ => return Err(format!("Invalid quality_fallback_behavior: {}", behavior)),
+        }
+        self.conn
+            .execute(
+                "UPDATE audio_settings SET quality_fallback_behavior = ?1 WHERE id = 1",
+                params![behavior],
+            )
+            .map_err(|e| format!("Failed to set quality_fallback_behavior: {}", e))?;
+        Ok(())
+    }
+
     pub fn set_normalization_target_lufs(&self, target: f32) -> Result<(), String> {
         self.conn
             .execute(
@@ -467,6 +502,11 @@ impl AudioSettingsStore {
 
     /// Reset all audio settings to their default values
     pub fn reset_all(&self) -> Result<AudioSettings, String> {
+        // ADR-003: quality_fallback_behavior must survive reset_all()
+        let saved_fallback = self
+            .get_quality_fallback_behavior()
+            .unwrap_or_else(|_| "ask".to_string());
+
         let defaults = AudioSettings::default();
         let backend_json: Option<String> = defaults
             .backend_type
@@ -528,7 +568,22 @@ impl AudioSettingsStore {
             )
             .map_err(|e| format!("Failed to reset audio settings: {}", e))?;
 
-        Ok(defaults)
+        // ADR-003: restore quality_fallback_behavior after reset (it is not an audio config)
+        self.conn
+            .execute(
+                "UPDATE audio_settings SET quality_fallback_behavior = ?1 WHERE id = 1",
+                params![saved_fallback],
+            )
+            .map_err(|e| {
+                format!(
+                    "Failed to restore quality_fallback_behavior after reset: {}",
+                    e
+                )
+            })?;
+
+        let mut result = defaults;
+        result.quality_fallback_behavior = saved_fallback;
+        Ok(result)
     }
 }
 

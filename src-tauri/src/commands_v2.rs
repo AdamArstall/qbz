@@ -13,7 +13,7 @@ use qbz_models::{
     Album, Artist, DiscoverAlbum, DiscoverData, DiscoverPlaylistsResponse, DiscoverResponse,
     GenreInfo, LabelDetail, LabelExploreResponse, LabelPageData, PageArtistResponse, Playlist,
     PlaylistTag, Quality, QueueState, QueueTrack as CoreQueueTrack, RepeatMode, SearchResultsPage,
-    Track, UserSession,
+    StreamUrl, Track, UserSession,
 };
 use qconnect_app::QueueCommandType;
 use qconnect_app::{QConnectQueueState, QConnectRendererState};
@@ -45,7 +45,7 @@ use crate::config::playback_preferences::{
 use crate::config::tray_settings::TraySettings;
 use crate::config::tray_settings::TraySettingsState;
 use crate::config::window_settings::WindowSettingsState;
-use crate::core_bridge::CoreBridgeState;
+use crate::core_bridge::{CoreBridge, CoreBridgeState};
 use crate::library::{
     get_artwork_cache_dir, thumbnails, LibraryState, LocalAlbum, LocalTrack, MetadataExtractor,
     PlaylistLocalTrack, PlaylistSettings, PlaylistStats, ScanProgress,
@@ -64,11 +64,14 @@ use crate::runtime::{
     RuntimeStatus,
 };
 use crate::AppState;
+#[cfg(target_os = "linux")]
 use ashpd::desktop::notification::{Notification as PortalNotification, NotificationProxy};
+#[cfg(target_os = "linux")]
 use ashpd::desktop::Icon;
 use md5::{Digest, Md5};
 use std::collections::HashSet;
 use std::fs;
+#[cfg(target_os = "linux")]
 use std::io::{Cursor, Write};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -285,6 +288,7 @@ fn limit_quality_for_device(quality: Quality, max_sample_rate: Option<u32>) -> Q
 
 /// Probe sample rate from FLAC audio data by reading the STREAMINFO header.
 /// Returns None for non-FLAC data or data too short to parse.
+#[cfg(target_os = "linux")]
 fn probe_flac_sample_rate(data: &[u8]) -> Option<u32> {
     // FLAC format: "fLaC" magic + metadata blocks
     // First block is always STREAMINFO (34 bytes)
@@ -424,6 +428,174 @@ async fn download_audio(url: &str) -> Result<Vec<u8>, String> {
 
     log::info!("[V2] Downloaded {} bytes", all_data.len());
     Ok(all_data)
+}
+
+/// Download audio with exponential backoff and quality fallback.
+///
+/// Attempts up to 4 downloads:
+///   1. Current quality, existing URL (immediate)
+///   2. Current quality, fresh URL (1s backoff)
+///   3. One quality step lower, fresh URL (2s backoff)
+///   4. Lower quality again, fresh URL (4s backoff)
+///
+/// If already at Mp3 (lowest), attempts 3-4 retry at Mp3.
+///
+/// Returns `(audio_data, stream_url_that_worked)` on success, or a
+/// `QualityExhausted:...` structured error string on failure.
+async fn download_with_backoff(
+    initial_url: &str,
+    track_id: u64,
+    initial_quality: Quality,
+    bridge: &CoreBridge,
+) -> Result<(Vec<u8>, StreamUrl), String> {
+    use std::time::Duration;
+
+    struct Attempt {
+        label: &'static str,
+        quality: Quality,
+        use_initial_url: bool,
+        backoff: Duration,
+    }
+
+    let lower_quality = initial_quality.lower().unwrap_or(initial_quality);
+
+    let attempts = [
+        Attempt {
+            label: "1/4 (current quality, existing URL)",
+            quality: initial_quality,
+            use_initial_url: true,
+            backoff: Duration::ZERO,
+        },
+        Attempt {
+            label: "2/4 (current quality, fresh URL)",
+            quality: initial_quality,
+            use_initial_url: false,
+            backoff: Duration::from_secs(1),
+        },
+        Attempt {
+            label: "3/4 (lower quality, fresh URL)",
+            quality: lower_quality,
+            use_initial_url: false,
+            backoff: Duration::from_secs(2),
+        },
+        Attempt {
+            label: "4/4 (lower quality retry, fresh URL)",
+            quality: lower_quality,
+            use_initial_url: false,
+            backoff: Duration::from_secs(4),
+        },
+    ];
+
+    let mut last_error = String::new();
+    let mut saw_server_error = false;
+    let mut lowest_tried = initial_quality;
+
+    for attempt in &attempts {
+        if !attempt.backoff.is_zero() {
+            log::info!(
+                "[V2/BACKOFF] Waiting {}s before attempt {} for track {}",
+                attempt.backoff.as_secs(),
+                attempt.label,
+                track_id
+            );
+            tokio::time::sleep(attempt.backoff).await;
+        }
+
+        // Track the lowest quality we've tried
+        if attempt.quality < lowest_tried {
+            lowest_tried = attempt.quality;
+        }
+
+        let (url, stream_url_result) = if attempt.use_initial_url {
+            (initial_url.to_string(), None)
+        } else {
+            log::info!(
+                "[V2/BACKOFF] Fetching fresh URL for track {} at quality {} (attempt {})",
+                track_id,
+                attempt.quality.label(),
+                attempt.label
+            );
+            match bridge.get_stream_url(track_id, attempt.quality).await {
+                Ok(su) => {
+                    let url = su.url.clone();
+                    (url, Some(su))
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[V2/BACKOFF] get_stream_url failed for attempt {}: {}",
+                        attempt.label,
+                        e
+                    );
+                    last_error = e;
+                    continue;
+                }
+            }
+        };
+
+        log::info!(
+            "[V2/BACKOFF] Attempt {} for track {} (quality: {})",
+            attempt.label,
+            track_id,
+            attempt.quality.label()
+        );
+
+        match download_audio(&url).await {
+            Ok(data) => {
+                // Build the StreamUrl to return: either the fresh one or a
+                // synthetic one from the initial URL.
+                let final_url = match stream_url_result {
+                    Some(su) => su,
+                    None => {
+                        // First attempt used the initial URL. Build a
+                        // placeholder StreamUrl — the caller already has
+                        // the original stream_url, but we need to return
+                        // *something*. We fetch a fresh one at the same
+                        // quality so caller has accurate metadata.
+                        bridge
+                            .get_stream_url(track_id, attempt.quality)
+                            .await
+                            .unwrap_or(StreamUrl {
+                                url: url.clone(),
+                                format_id: attempt.quality.id(),
+                                mime_type: String::new(),
+                                sampling_rate: 0.0,
+                                bit_depth: None,
+                                track_id,
+                                restrictions: vec![],
+                            })
+                    }
+                };
+                log::info!(
+                    "[V2/BACKOFF] Success on attempt {} for track {} ({} bytes)",
+                    attempt.label,
+                    track_id,
+                    data.len()
+                );
+                return Ok((data, final_url));
+            }
+            Err(e) => {
+                // Check for server errors (502, 503, 504)
+                if e.contains("502") || e.contains("503") || e.contains("504") {
+                    saw_server_error = true;
+                }
+                log::warn!(
+                    "[V2/BACKOFF] Attempt {} failed for track {}: {}",
+                    attempt.label,
+                    track_id,
+                    e
+                );
+                last_error = e;
+            }
+        }
+    }
+
+    Err(format!(
+        "QualityExhausted:requested={},lowest_tried={},server_error={},detail={}",
+        initial_quality.label(),
+        lowest_tried.label(),
+        saw_server_error,
+        last_error
+    ))
 }
 
 /// Stream info from probing a URL (HEAD + first 64KB)
@@ -624,9 +796,12 @@ fn v2_teardown_type_alias_state<S>(state: &Arc<Mutex<Option<S>>>) {
     }
 }
 
+#[cfg(target_os = "linux")]
 const PORTAL_NOTIFICATION_ICON_MAX_EDGE: u32 = 512;
+#[cfg(target_os = "linux")]
 const PORTAL_NOTIFICATION_ICON_MAX_BYTES: usize = 4 * 1024 * 1024;
 
+#[cfg(target_os = "linux")]
 fn v2_get_notification_artwork_cache_dir() -> Result<PathBuf, String> {
     let cache_dir = dirs::cache_dir()
         .ok_or_else(|| "Could not find cache directory".to_string())?
@@ -638,6 +813,7 @@ fn v2_get_notification_artwork_cache_dir() -> Result<PathBuf, String> {
     Ok(cache_dir)
 }
 
+#[cfg(target_os = "linux")]
 fn v2_resolve_local_artwork(url: &str) -> Option<PathBuf> {
     if let Some(path) = url.strip_prefix("file://") {
         return Some(PathBuf::from(path));
@@ -649,6 +825,7 @@ fn v2_resolve_local_artwork(url: &str) -> Option<PathBuf> {
     None
 }
 
+#[cfg(target_os = "linux")]
 fn v2_cache_notification_artwork(url: &str) -> Result<PathBuf, String> {
     if let Some(local_path) = v2_resolve_local_artwork(url) {
         if local_path.exists() {
@@ -689,6 +866,7 @@ fn v2_cache_notification_artwork(url: &str) -> Result<PathBuf, String> {
     Ok(cache_path)
 }
 
+#[cfg(target_os = "linux")]
 fn v2_prepare_notification_icon_bytes(path: &std::path::Path) -> Result<Vec<u8>, String> {
     let source_image = image::open(path)
         .map_err(|e| format!("Failed to decode artwork image {:?}: {}", path, e))?;
@@ -1965,15 +2143,12 @@ fn spawn_v2_prefetch_with_hw_check(
                 let bridge_guard = bridge_clone.read().await;
                 let bridge = bridge_guard.as_ref().ok_or("CoreBridge not initialized")?;
                 let stream_url = bridge.get_stream_url(track_id, effective_quality).await?;
-                drop(bridge_guard);
-
-                let data = download_audio(&stream_url.url).await?;
-                Ok::<Vec<u8>, String>(data)
+                download_with_backoff(&stream_url.url, track_id, effective_quality, bridge).await
             }
             .await;
 
             match result {
-                Ok(data) => {
+                Ok((data, _url)) => {
                     // Small delay before cache insertion to avoid potential race with audio thread
                     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                     cache_clone.insert(track_id, data);
@@ -1981,71 +2156,10 @@ fn spawn_v2_prefetch_with_hw_check(
                 }
                 Err(e) => {
                     log::warn!(
-                        "[V2/PREFETCH] Failed for track {} (attempt 1): {}",
+                        "[V2/PREFETCH] Failed for track {} after all retries: {}",
                         track_id,
                         e
                     );
-                    // Retry with fresh URL — CDN edge may have returned EOF
-                    log::info!(
-                        "[V2/PREFETCH] Retrying track {} with fresh URL...",
-                        track_id
-                    );
-                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                    let retry_result = async {
-                        let bridge_guard = bridge_clone.read().await;
-                        let bridge = bridge_guard.as_ref().ok_or("CoreBridge not initialized")?;
-                        let stream_url = bridge.get_stream_url(track_id, effective_quality).await?;
-                        drop(bridge_guard);
-                        download_audio(&stream_url.url).await
-                    }
-                    .await;
-                    match retry_result {
-                        Ok(data) => {
-                            cache_clone.insert(track_id, data);
-                            log::info!(
-                                "[V2/PREFETCH] Complete for track {} (retry succeeded)",
-                                track_id
-                            );
-                        }
-                        Err(e2) => {
-                            // Both attempts at current quality failed — try lower quality
-                            if let Some(fallback_q) = effective_quality.lower() {
-                                log::warn!(
-                                    "[V2/PREFETCH] Retry also failed for track {}: {}. Trying quality fallback to {}",
-                                    track_id, e2, fallback_q.label()
-                                );
-                                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                                let fallback_result = async {
-                                    let bridge_guard = bridge_clone.read().await;
-                                    let bridge = bridge_guard
-                                        .as_ref()
-                                        .ok_or("CoreBridge not initialized")?;
-                                    let stream_url =
-                                        bridge.get_stream_url(track_id, fallback_q).await?;
-                                    log::info!(
-                                        "[V2/PREFETCH] Quality fallback: {} → {} (format_id={})",
-                                        effective_quality.label(),
-                                        fallback_q.label(),
-                                        stream_url.format_id
-                                    );
-                                    drop(bridge_guard);
-                                    download_audio(&stream_url.url).await
-                                }
-                                .await;
-                                match fallback_result {
-                                    Ok(data) => {
-                                        cache_clone.insert(track_id, data);
-                                        log::info!("[V2/PREFETCH] Complete for track {} (quality fallback succeeded)", track_id);
-                                    }
-                                    Err(e3) => {
-                                        log::warn!("[V2/PREFETCH] Quality fallback also failed for track {}: {}", track_id, e3);
-                                    }
-                                }
-                            } else {
-                                log::warn!("[V2/PREFETCH] Failed for track {} (attempt 2, no lower quality): {}", track_id, e2);
-                            }
-                        }
-                    }
                 }
             }
 
@@ -2300,6 +2414,7 @@ pub fn v2_get_available_backends() -> Result<Vec<BackendInfo>, String> {
                 AudioBackendType::PipeWire => "PipeWire",
                 AudioBackendType::Alsa => "ALSA Direct",
                 AudioBackendType::Pulse => "PulseAudio",
+                AudioBackendType::SystemDefault => "System Audio",
             };
 
             BackendInfo {
@@ -2412,30 +2527,41 @@ pub fn v2_query_dac_capabilities(nodeName: String) -> Result<DacCapabilities, St
     }
 
     // Detect real sample rates from /proc/asound via PipeWire sink -> ALSA card mapping
-    if let Some(rates) =
-        crate::audio::pipewire_backend::PipeWireBackend::get_sink_supported_rates(&nodeName)
+    #[cfg(target_os = "linux")]
     {
-        log::info!(
-            "[HiFi Wizard] Detected sample rates for {}: {:?}",
-            nodeName,
-            rates
-        );
-        capabilities.sample_rates = rates;
-    } else {
-        // Fallback: try ALSA device ID directly (for ALSA Direct backend)
-        if let Some(rates) = qbz_audio::get_device_supported_rates(&nodeName) {
+        if let Some(rates) =
+            crate::audio::pipewire_backend::PipeWireBackend::get_sink_supported_rates(&nodeName)
+        {
             log::info!(
-                "[HiFi Wizard] Detected sample rates via ALSA for {}: {:?}",
+                "[HiFi Wizard] Detected sample rates for {}: {:?}",
                 nodeName,
                 rates
             );
             capabilities.sample_rates = rates;
         } else {
-            log::warn!(
-                "[HiFi Wizard] Could not detect sample rates for {}, using defaults",
-                nodeName
-            );
+            // Fallback: try ALSA device ID directly (for ALSA Direct backend)
+            if let Some(rates) = qbz_audio::get_device_supported_rates(&nodeName) {
+                log::info!(
+                    "[HiFi Wizard] Detected sample rates via ALSA for {}: {:?}",
+                    nodeName,
+                    rates
+                );
+                capabilities.sample_rates = rates;
+            } else {
+                log::warn!(
+                    "[HiFi Wizard] Could not detect sample rates for {}, using defaults",
+                    nodeName
+                );
+            }
         }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        log::info!(
+            "[HiFi Wizard] Hardware sample rate detection not yet implemented on this platform for {}",
+            nodeName
+        );
     }
 
     Ok(capabilities)
@@ -2968,6 +3094,7 @@ pub fn v2_get_qobuz_track_url(trackId: u64) -> Result<String, RuntimeError> {
 }
 
 /// Known .desktop filenames across packaging formats.
+#[cfg(target_os = "linux")]
 const QBZ_DESKTOP_CANDIDATES: &[&str] = &[
     "com.blitzfc.qbz.desktop", // Tauri deb, Flatpak
     "qbz.desktop",             // Arch, AUR, Snap
@@ -2975,6 +3102,7 @@ const QBZ_DESKTOP_CANDIDATES: &[&str] = &[
 ];
 
 /// Search standard directories for the installed QBZ .desktop file.
+#[cfg(target_os = "linux")]
 fn find_qbz_desktop_file() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     let search_dirs = [
@@ -3000,6 +3128,7 @@ fn find_qbz_desktop_file() -> String {
 }
 
 /// Refresh the desktop MIME database so xdg-open picks up changes.
+#[cfg(target_os = "linux")]
 fn refresh_desktop_database() {
     // User-level applications dir
     if let Some(data_dir) = dirs::data_dir() {
@@ -3019,71 +3148,93 @@ fn refresh_desktop_database() {
 /// Check if QBZ is the default handler for qobuzapp:// links.
 #[tauri::command]
 pub fn v2_check_qobuzapp_handler() -> Result<bool, RuntimeError> {
-    let output = std::process::Command::new("xdg-mime")
-        .args(["query", "default", "x-scheme-handler/qobuzapp"])
-        .output()
-        .map_err(|e| RuntimeError::Internal(format!("Failed to run xdg-mime: {}", e)))?;
+    #[cfg(target_os = "linux")]
+    {
+        let output = std::process::Command::new("xdg-mime")
+            .args(["query", "default", "x-scheme-handler/qobuzapp"])
+            .output()
+            .map_err(|e| RuntimeError::Internal(format!("Failed to run xdg-mime: {}", e)))?;
 
-    let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok(QBZ_DESKTOP_CANDIDATES.iter().any(|c| *c == result))
+        let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(QBZ_DESKTOP_CANDIDATES.iter().any(|c| *c == result))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        // URI handler registration is Linux-only (xdg-mime)
+        Ok(false)
+    }
 }
 
 /// Register QBZ as the default handler for qobuzapp:// links.
 #[tauri::command]
 pub fn v2_register_qobuzapp_handler() -> Result<bool, RuntimeError> {
-    let desktop_file = find_qbz_desktop_file();
-    log::info!(
-        "[URI Handler] Registering {} for x-scheme-handler/qobuzapp",
-        desktop_file
-    );
+    #[cfg(target_os = "linux")]
+    {
+        let desktop_file = find_qbz_desktop_file();
+        log::info!(
+            "[URI Handler] Registering {} for x-scheme-handler/qobuzapp",
+            desktop_file
+        );
 
-    let status = std::process::Command::new("xdg-mime")
-        .args(["default", &desktop_file, "x-scheme-handler/qobuzapp"])
-        .status()
-        .map_err(|e| RuntimeError::Internal(format!("Failed to run xdg-mime: {}", e)))?;
+        let status = std::process::Command::new("xdg-mime")
+            .args(["default", &desktop_file, "x-scheme-handler/qobuzapp"])
+            .status()
+            .map_err(|e| RuntimeError::Internal(format!("Failed to run xdg-mime: {}", e)))?;
 
-    if !status.success() {
-        log::error!("[URI Handler] xdg-mime default failed");
-        return Ok(false);
+        if !status.success() {
+            log::error!("[URI Handler] xdg-mime default failed");
+            return Ok(false);
+        }
+
+        refresh_desktop_database();
+        log::info!("[URI Handler] Registration complete, desktop database refreshed");
+        Ok(true)
     }
-
-    refresh_desktop_database();
-    log::info!("[URI Handler] Registration complete, desktop database refreshed");
-    Ok(true)
+    #[cfg(not(target_os = "linux"))]
+    {
+        Ok(false)
+    }
 }
 
 /// Remove QBZ as the default handler for qobuzapp:// links.
 #[tauri::command]
 pub fn v2_deregister_qobuzapp_handler() -> Result<bool, RuntimeError> {
-    let mimeapps = dirs::config_dir()
-        .ok_or_else(|| RuntimeError::Internal("No config dir found".to_string()))?
-        .join("mimeapps.list");
+    #[cfg(target_os = "linux")]
+    {
+        let mimeapps = dirs::config_dir()
+            .ok_or_else(|| RuntimeError::Internal("No config dir found".to_string()))?
+            .join("mimeapps.list");
 
-    if !mimeapps.exists() {
-        return Ok(true); // Nothing to remove
+        if !mimeapps.exists() {
+            return Ok(true); // Nothing to remove
+        }
+
+        let content = std::fs::read_to_string(&mimeapps)
+            .map_err(|e| RuntimeError::Internal(format!("Failed to read mimeapps.list: {}", e)))?;
+
+        let filtered: String = content
+            .lines()
+            .filter(|line| !line.starts_with("x-scheme-handler/qobuzapp="))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Preserve trailing newline if original had one
+        let filtered = if content.ends_with('\n') && !filtered.ends_with('\n') {
+            format!("{}\n", filtered)
+        } else {
+            filtered
+        };
+
+        std::fs::write(&mimeapps, filtered)
+            .map_err(|e| RuntimeError::Internal(format!("Failed to write mimeapps.list: {}", e)))?;
+
+        refresh_desktop_database();
+        Ok(true)
     }
-
-    let content = std::fs::read_to_string(&mimeapps)
-        .map_err(|e| RuntimeError::Internal(format!("Failed to read mimeapps.list: {}", e)))?;
-
-    let filtered: String = content
-        .lines()
-        .filter(|line| !line.starts_with("x-scheme-handler/qobuzapp="))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    // Preserve trailing newline if original had one
-    let filtered = if content.ends_with('\n') && !filtered.ends_with('\n') {
-        format!("{}\n", filtered)
-    } else {
-        filtered
-    };
-
-    std::fs::write(&mimeapps, filtered)
-        .map_err(|e| RuntimeError::Internal(format!("Failed to write mimeapps.list: {}", e)))?;
-
-    refresh_desktop_database();
-    Ok(true)
+    #[cfg(not(target_os = "linux"))]
+    {
+        Ok(true)
+    }
 }
 
 #[tauri::command]
@@ -7668,6 +7819,7 @@ pub struct V2PlayTrackResult {
 pub async fn v2_play_track(
     track_id: u64,
     quality: Option<String>,
+    force_lowest_quality: Option<bool>,
     duration_secs: Option<u64>,
     bridge: State<'_, CoreBridgeState>,
     offline_cache: State<'_, OfflineCacheState>,
@@ -7708,6 +7860,15 @@ pub async fn v2_play_track(
         } else {
             preferred_quality
         }
+    };
+
+    // Override quality to Mp3 if force_lowest_quality is set (used by
+    // QualityFallbackModal "always_fallback" preference)
+    let final_quality = if force_lowest_quality.unwrap_or(false) {
+        log::info!("[V2] force_lowest_quality=true, using Mp3");
+        Quality::Mp3
+    } else {
+        final_quality
     };
 
     // Check streaming settings
@@ -7965,62 +8126,23 @@ pub async fn v2_play_track(
         let stream_info = match v2_get_stream_info(&stream_url.url).await {
             Ok(info) => info,
             Err(e) => {
-                // Probe failed (CDN EOF, etc.) — fall through to standard download path
+                // Probe failed (CDN EOF, etc.) — fall through to full download with backoff
                 log::warn!(
-                    "[V2/STREAMING] Probe failed for track {}: {}. Falling back to full download.",
+                    "[V2/STREAMING] Probe failed for track {}: {}. Falling back to full download with backoff.",
                     track_id,
                     e
                 );
-                // Get a fresh URL and use the standard download path below
-                let retry_url = bridge_guard
-                    .get_stream_url(track_id, final_quality)
-                    .await
-                    .map_err(RuntimeError::Internal)?;
-                stream_url = retry_url;
-                let audio_data = match download_audio(&stream_url.url).await {
-                    Ok(data) => data,
-                    Err(e2) => {
-                        // Fresh URL at same quality also failed — try lower quality
-                        if let Some(fallback_q) = final_quality.lower() {
-                            log::warn!(
-                                "[V2/DOWNLOAD] Streaming fallback also failed for track {}: {}. Trying quality fallback to {}",
-                                track_id, e2, fallback_q.label()
-                            );
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                            let fallback_url = bridge_guard
-                                .get_stream_url(track_id, fallback_q)
-                                .await
-                                .map_err(RuntimeError::Internal)?;
-                            log::info!(
-                                "[V2/DOWNLOAD] Streaming quality fallback: {} → {} (format_id={})",
-                                final_quality.label(),
-                                fallback_q.label(),
-                                fallback_url.format_id
-                            );
-                            stream_url = fallback_url;
-                            match download_audio(&stream_url.url).await {
-                                Ok(data) => data,
-                                Err(e3) => {
-                                    log::warn!("[V2/DOWNLOAD] Quality fallback also failed for track {}: {}", track_id, e3);
-                                    return Err(RuntimeError::Internal(format!(
-                                        "Download failed after quality fallback: {}",
-                                        e3
-                                    )));
-                                }
-                            }
-                        } else {
-                            log::warn!(
-                                "[V2/DOWNLOAD] Retry also failed for track {}: {}",
-                                track_id,
-                                e2
-                            );
-                            return Err(RuntimeError::Internal(format!(
-                                "Download failed after retry: {}",
-                                e2
-                            )));
-                        }
-                    }
-                };
+                let effective_quality = Quality::from_id(stream_url.format_id)
+                    .unwrap_or(final_quality);
+                let (audio_data, worked_url) = download_with_backoff(
+                    &stream_url.url,
+                    track_id,
+                    effective_quality,
+                    &*bridge_guard,
+                )
+                .await
+                .map_err(RuntimeError::Internal)?;
+                stream_url = worked_url;
                 let data_size = audio_data.len();
                 if !streaming_only {
                     cache.insert(track_id, audio_data.clone());
@@ -8129,57 +8251,17 @@ pub async fn v2_play_track(
         track_id,
         !streaming_only
     );
-    let audio_data = match download_audio(&stream_url.url).await {
-        Ok(data) => data,
-        Err(e) => {
-            log::warn!(
-                "[V2/DOWNLOAD] First attempt failed for track {}: {}",
-                track_id,
-                e
-            );
-            // Retry with fresh URL — CDN edge may have returned premature EOF
-            log::info!(
-                "[V2/DOWNLOAD] Retrying track {} with fresh URL...",
-                track_id
-            );
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            let retry_url = bridge_guard
-                .get_stream_url(track_id, final_quality)
-                .await
-                .map_err(RuntimeError::Internal)?;
-            match download_audio(&retry_url.url).await {
-                Ok(data) => data,
-                Err(e2) => {
-                    // Both attempts at current quality failed — try lower quality
-                    if let Some(fallback_q) = final_quality.lower() {
-                        log::warn!(
-                            "[V2/DOWNLOAD] Retry also failed for track {}: {}. Trying quality fallback to {}",
-                            track_id, e2, fallback_q.label()
-                        );
-                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        let fallback_url = bridge_guard
-                            .get_stream_url(track_id, fallback_q)
-                            .await
-                            .map_err(RuntimeError::Internal)?;
-                        log::info!(
-                            "[V2/DOWNLOAD] Quality fallback: {} → {} (format_id={})",
-                            final_quality.label(),
-                            fallback_q.label(),
-                            fallback_url.format_id
-                        );
-                        download_audio(&fallback_url.url)
-                            .await
-                            .map_err(RuntimeError::Internal)?
-                    } else {
-                        return Err(RuntimeError::Internal(format!(
-                            "Download failed after retry (no lower quality available): {}",
-                            e2
-                        )));
-                    }
-                }
-            }
-        }
-    };
+    let effective_quality = Quality::from_id(stream_url.format_id)
+        .unwrap_or(final_quality);
+    let (audio_data, worked_url) = download_with_backoff(
+        &stream_url.url,
+        track_id,
+        effective_quality,
+        &*bridge_guard,
+    )
+    .await
+    .map_err(RuntimeError::Internal)?;
+    stream_url = worked_url;
     let data_size = audio_data.len();
 
     // Cache it (unless streaming_only mode)
@@ -8617,6 +8699,42 @@ pub fn v2_set_sync_audio_on_startup(
         .ok_or(RuntimeError::UserSessionNotActivated)?;
     store
         .set_sync_audio_on_startup(enabled)
+        .map_err(RuntimeError::Internal)
+}
+
+/// Get quality fallback behavior (V2)
+#[tauri::command]
+pub fn v2_get_quality_fallback_behavior(
+    audio_settings: State<'_, AudioSettingsState>,
+) -> Result<String, RuntimeError> {
+    let guard = audio_settings
+        .store
+        .lock()
+        .map_err(|e| RuntimeError::Internal(format!("Lock error: {}", e)))?;
+    let store = guard
+        .as_ref()
+        .ok_or(RuntimeError::UserSessionNotActivated)?;
+    store
+        .get_quality_fallback_behavior()
+        .map_err(RuntimeError::Internal)
+}
+
+/// Set quality fallback behavior (V2)
+#[tauri::command]
+pub fn v2_set_quality_fallback_behavior(
+    behavior: String,
+    audio_settings: State<'_, AudioSettingsState>,
+) -> Result<(), RuntimeError> {
+    log::info!("Command: v2_set_quality_fallback_behavior {}", behavior);
+    let guard = audio_settings
+        .store
+        .lock()
+        .map_err(|e| RuntimeError::Internal(format!("Lock error: {}", e)))?;
+    let store = guard
+        .as_ref()
+        .ok_or(RuntimeError::UserSessionNotActivated)?;
+    store
+        .set_quality_fallback_behavior(&behavior)
         .map_err(RuntimeError::Internal)
 }
 
@@ -11209,60 +11327,88 @@ pub async fn v2_show_track_notification(
         artist
     );
 
-    let mut lines = Vec::new();
-    let mut line1_parts = Vec::new();
-    if !artist.is_empty() {
-        line1_parts.push(artist.clone());
-    }
-    if !album.is_empty() {
-        line1_parts.push(album.clone());
-    }
-    if !line1_parts.is_empty() {
-        lines.push(line1_parts.join(" • "));
-    }
+    let body_text = {
+        let separator = if cfg!(target_os = "macos") { " \u{00b7} " } else { " \u{2022} " };
+        let mut lines = Vec::new();
+        let mut line1_parts = Vec::new();
+        if !artist.is_empty() {
+            line1_parts.push(artist.clone());
+        }
+        if !album.is_empty() {
+            line1_parts.push(album.clone());
+        }
+        if !line1_parts.is_empty() {
+            lines.push(line1_parts.join(separator));
+        }
 
-    let quality = v2_format_notification_quality(bit_depth, sample_rate);
-    if !quality.is_empty() {
-        lines.push(quality);
-    }
+        let quality = v2_format_notification_quality(bit_depth, sample_rate);
+        if !quality.is_empty() {
+            lines.push(quality);
+        }
 
-    let body_text = lines.join("\n");
-    let mut notification = PortalNotification::new(&title).body(Some(body_text.as_str()));
+        lines.join("\n")
+    };
 
-    if let Some(ref url_str) = artwork_url {
-        let url_clone = url_str.clone();
-        let prepared = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
-            let path = v2_cache_notification_artwork(&url_clone)?;
-            v2_prepare_notification_icon_bytes(&path)
-        })
-        .await;
+    #[cfg(target_os = "linux")]
+    {
+        let mut notification = PortalNotification::new(&title)
+            .body(Some(body_text.as_str()));
 
-        match prepared {
-            Ok(Ok(icon_bytes)) => {
-                log::info!("Notification artwork prepared: {} bytes", icon_bytes.len());
-                notification = notification.icon(Icon::Bytes(icon_bytes));
+        if let Some(ref url_str) = artwork_url {
+            let url_clone = url_str.clone();
+            let prepared = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
+                let path = v2_cache_notification_artwork(&url_clone)?;
+                v2_prepare_notification_icon_bytes(&path)
+            })
+            .await;
+
+            match prepared {
+                Ok(Ok(icon_bytes)) => {
+                    log::info!("Notification artwork prepared: {} bytes", icon_bytes.len());
+                    notification = notification.icon(Icon::Bytes(icon_bytes));
+                }
+                Ok(Err(e)) => {
+                    log::warn!("Could not prepare notification artwork icon: {}", e);
+                }
+                Err(e) => {
+                    log::warn!("Notification artwork preparation task failed: {}", e);
+                }
             }
-            Ok(Err(e)) => {
-                log::warn!("Could not prepare notification artwork icon: {}", e);
+        }
+
+        match NotificationProxy::new().await {
+            Ok(proxy) => {
+                if let Err(e) = proxy.add_notification("track-now-playing", notification).await {
+                    log::warn!("Could not show notification via XDG portal: {}", e);
+                }
             }
             Err(e) => {
-                log::warn!("Notification artwork preparation task failed: {}", e);
+                log::warn!("XDG notification portal unavailable: {}", e);
             }
         }
     }
 
-    match NotificationProxy::new().await {
-        Ok(proxy) => {
-            if let Err(e) = proxy
-                .add_notification("track-now-playing", notification)
-                .await
+    #[cfg(target_os = "macos")]
+    {
+        let _ = &artwork_url; // macOS notify-rust doesn't support custom artwork
+
+        // Fire-and-forget: notification delivery shouldn't block track playback response
+        tokio::task::spawn_blocking(move || {
+            let _ = notify_rust::set_application("com.blitzfc.qbz");
+            if let Err(e) = notify_rust::Notification::new()
+                .summary(&title)
+                .body(&body_text)
+                .show()
             {
-                log::warn!("Could not show notification via XDG portal: {}", e);
+                log::warn!("Failed to show macOS notification: {}", e);
             }
-        }
-        Err(e) => {
-            log::warn!("XDG notification portal unavailable: {}", e);
-        }
+        });
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        let _ = (&body_text, &artwork_url);
+        log::info!("Desktop notifications not implemented on this platform");
     }
 
     Ok(())
@@ -11583,6 +11729,17 @@ pub async fn v2_check_album_fully_cached(
     cache_state: State<'_, crate::offline_cache::OfflineCacheState>,
 ) -> Result<bool, RuntimeError> {
     crate::offline_cache::commands::check_album_fully_cached(albumId, cache_state)
+        .await
+        .map_err(RuntimeError::Internal)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn v2_check_albums_fully_cached_batch(
+    albumIds: Vec<String>,
+    cache_state: State<'_, crate::offline_cache::OfflineCacheState>,
+) -> Result<std::collections::HashMap<String, bool>, RuntimeError> {
+    crate::offline_cache::commands::check_albums_fully_cached_batch(albumIds, cache_state)
         .await
         .map_err(RuntimeError::Internal)
 }
@@ -13111,6 +13268,47 @@ pub async fn v2_fetch_url_bytes(url: String) -> Result<Vec<u8>, String> {
 
 // ============ Image Cache Commands ============
 
+/// Download an image via reqwest (rustls) and write to a temp file.
+/// Returns a file:// URL that WebKit can load without needing system TLS.
+/// Used as fallback when the image cache service is unavailable.
+async fn download_image_to_temp(url: &str) -> Result<String, String> {
+    let url_owned = url.to_string();
+    let bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
+        let response = reqwest::blocking::Client::new()
+            .get(&url_owned)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .map_err(|e| format!("Failed to download image: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(format!("HTTP {}", response.status()));
+        }
+
+        response
+            .bytes()
+            .map(|b| b.to_vec())
+            .map_err(|e| format!("Failed to read image bytes: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))??;
+
+    // Write to temp dir with a hash-based filename to avoid duplicates
+    let hash = {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        url.hash(&mut hasher);
+        hasher.finish()
+    };
+    let tmp_dir = std::env::temp_dir().join("qbz-img-proxy");
+    std::fs::create_dir_all(&tmp_dir)
+        .map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    let tmp_path = tmp_dir.join(format!("{:x}.img", hash));
+    std::fs::write(&tmp_path, &bytes)
+        .map_err(|e| format!("Failed to write temp image: {}", e))?;
+
+    Ok(format!("file://{}", tmp_path.display()))
+}
+
 #[tauri::command]
 pub async fn v2_get_cached_image(
     url: String,
@@ -13130,8 +13328,9 @@ pub async fn v2_get_cached_image(
     };
 
     if !settings.enabled {
-        // Cache disabled — return original URL
-        return Ok(url);
+        // Cache disabled — still proxy through reqwest so WebKit never
+        // needs to resolve HTTPS (fixes AppImage TLS on some distros)
+        return download_image_to_temp(&url).await;
     }
 
     // Check cache first
@@ -13147,7 +13346,7 @@ pub async fn v2_get_cached_image(
         }
     }
 
-    // Download the image (in blocking context since reqwest::blocking)
+    // Download the image via reqwest (uses rustls — own CA bundle)
     let url_clone = url.clone();
     let bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
         let response = reqwest::blocking::Client::new()
@@ -13169,19 +13368,25 @@ pub async fn v2_get_cached_image(
     .map_err(|e| format!("Task join error: {}", e))??;
 
     // Store in cache and evict if needed
-    let max_bytes = (settings.max_size_mb as u64) * 1024 * 1024;
-    let lock = cache_state
-        .service
-        .lock()
-        .map_err(|e| format!("Cache lock error: {}", e))?;
-    if let Some(service) = lock.as_ref() {
-        let path = service.store(&url, &bytes)?;
-        // Evict LRU entries if over limit
-        let _ = service.evict(max_bytes);
-        Ok(format!("file://{}", path.display()))
-    } else {
-        // Service not initialized, return original URL
-        Ok(url)
+    let store_result = {
+        let max_bytes = (settings.max_size_mb as u64) * 1024 * 1024;
+        let lock = cache_state
+            .service
+            .lock()
+            .map_err(|e| format!("Cache lock error: {}", e))?;
+        if let Some(service) = lock.as_ref() {
+            let path = service.store(&url, &bytes)?;
+            let _ = service.evict(max_bytes);
+            Some(format!("file://{}", path.display()))
+        } else {
+            None
+        }
+    }; // lock dropped here, before any .await
+
+    match store_result {
+        Some(path) => Ok(path),
+        // Service not initialized — use temp file fallback
+        None => download_image_to_temp(&url).await,
     }
 }
 
@@ -13696,4 +13901,138 @@ pub async fn v2_dismiss_discovery_artist(
         db.dismiss_discovery_artist(&tag_lower, &normalized)?;
     }
     Ok(())
+}
+
+// ==================== Runtime Diagnostics ====================
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeDiagnostics {
+    // Audio: saved settings
+    pub audio_output_device: Option<String>,
+    pub audio_backend_type: Option<String>,
+    pub audio_exclusive_mode: bool,
+    pub audio_dac_passthrough: bool,
+    pub audio_preferred_sample_rate: Option<u32>,
+    pub audio_alsa_plugin: Option<String>,
+    pub audio_alsa_hardware_volume: bool,
+    pub audio_normalization_enabled: bool,
+    pub audio_normalization_target_lufs: f32,
+    pub audio_gapless_enabled: bool,
+    pub audio_pw_force_bitperfect: bool,
+    pub audio_stream_buffer_seconds: u8,
+    pub audio_streaming_only: bool,
+
+    // Graphics: saved settings
+    pub gfx_hardware_acceleration: bool,
+    pub gfx_force_x11: bool,
+    pub gfx_gdk_scale: Option<String>,
+    pub gfx_gdk_dpi_scale: Option<String>,
+    pub gfx_gsk_renderer: Option<String>,
+
+    // Graphics: runtime (what actually applied at startup)
+    pub runtime_using_fallback: bool,
+    pub runtime_is_wayland: bool,
+    pub runtime_has_nvidia: bool,
+    pub runtime_has_amd: bool,
+    pub runtime_has_intel: bool,
+    pub runtime_is_vm: bool,
+    pub runtime_hw_accel_enabled: bool,
+    pub runtime_force_x11_active: bool,
+
+    // Developer settings
+    pub dev_force_dmabuf: bool,
+
+    // Environment variables (what WebKit actually sees)
+    pub env_webkit_disable_dmabuf: Option<String>,
+    pub env_webkit_disable_compositing: Option<String>,
+    pub env_gdk_backend: Option<String>,
+    pub env_gsk_renderer: Option<String>,
+    pub env_libgl_always_software: Option<String>,
+    pub env_wayland_display: Option<String>,
+    pub env_xdg_session_type: Option<String>,
+
+    // App info
+    pub app_version: String,
+}
+
+#[tauri::command]
+pub fn v2_get_runtime_diagnostics(
+    audio_state: State<'_, AudioSettingsState>,
+    graphics_state: State<'_, GraphicsSettingsState>,
+    developer_state: State<'_, DeveloperSettingsState>,
+) -> Result<RuntimeDiagnostics, RuntimeError> {
+    // Audio settings (may not be available before login)
+    let audio = audio_state
+        .store
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().and_then(|s| s.get_settings().ok()));
+
+    // Graphics settings
+    let gfx = graphics_state
+        .store
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().and_then(|s| s.get_settings().ok()));
+
+    // Graphics runtime status (static atomics — always available)
+    let gfx_status = crate::config::graphics_settings::get_graphics_startup_status();
+
+    // Developer settings
+    let dev = developer_state
+        .store
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().and_then(|s| s.get_settings().ok()));
+
+    let env_var = |name: &str| std::env::var(name).ok();
+
+    let audio_defaults = crate::config::audio_settings::AudioSettings::default();
+    let audio = audio.unwrap_or(audio_defaults);
+    let gfx = gfx.unwrap_or_default();
+    let dev = dev.unwrap_or_default();
+
+    Ok(RuntimeDiagnostics {
+        audio_output_device: audio.output_device,
+        audio_backend_type: audio.backend_type.map(|b| format!("{:?}", b)),
+        audio_exclusive_mode: audio.exclusive_mode,
+        audio_dac_passthrough: audio.dac_passthrough,
+        audio_preferred_sample_rate: audio.preferred_sample_rate,
+        audio_alsa_plugin: audio.alsa_plugin.map(|p| format!("{:?}", p)),
+        audio_alsa_hardware_volume: audio.alsa_hardware_volume,
+        audio_normalization_enabled: audio.normalization_enabled,
+        audio_normalization_target_lufs: audio.normalization_target_lufs,
+        audio_gapless_enabled: audio.gapless_enabled,
+        audio_pw_force_bitperfect: audio.pw_force_bitperfect,
+        audio_stream_buffer_seconds: audio.stream_buffer_seconds,
+        audio_streaming_only: audio.streaming_only,
+
+        gfx_hardware_acceleration: gfx.hardware_acceleration,
+        gfx_force_x11: gfx.force_x11,
+        gfx_gdk_scale: gfx.gdk_scale,
+        gfx_gdk_dpi_scale: gfx.gdk_dpi_scale,
+        gfx_gsk_renderer: gfx.gsk_renderer,
+
+        runtime_using_fallback: gfx_status.using_fallback,
+        runtime_is_wayland: gfx_status.is_wayland,
+        runtime_has_nvidia: gfx_status.has_nvidia,
+        runtime_has_amd: gfx_status.has_amd,
+        runtime_has_intel: gfx_status.has_intel,
+        runtime_is_vm: gfx_status.is_vm,
+        runtime_hw_accel_enabled: gfx_status.hardware_accel_enabled,
+        runtime_force_x11_active: gfx_status.force_x11_active,
+
+        dev_force_dmabuf: dev.force_dmabuf,
+
+        env_webkit_disable_dmabuf: env_var("WEBKIT_DISABLE_DMABUF_RENDERER"),
+        env_webkit_disable_compositing: env_var("WEBKIT_DISABLE_COMPOSITING_MODE"),
+        env_gdk_backend: env_var("GDK_BACKEND"),
+        env_gsk_renderer: env_var("GSK_RENDERER"),
+        env_libgl_always_software: env_var("LIBGL_ALWAYS_SOFTWARE"),
+        env_wayland_display: env_var("WAYLAND_DISPLAY"),
+        env_xdg_session_type: env_var("XDG_SESSION_TYPE"),
+
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+    })
 }

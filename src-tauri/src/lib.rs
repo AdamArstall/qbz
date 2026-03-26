@@ -169,6 +169,7 @@ pub fn update_media_controls_metadata(
 
 /// DEPRECATED: KWin SSD hack removed — caused double titlebar + CPU spike.
 /// Kept temporarily for the cleanup block that removes stale rules.
+#[cfg(target_os = "linux")]
 #[allow(dead_code)]
 fn setup_kwin_window_rule() -> Result<(), String> {
     let config_path = dirs::config_dir()
@@ -297,6 +298,7 @@ fn setup_kwin_window_rule() -> Result<(), String> {
 }
 
 /// Remove the KWin window rule for QBZ when system title bar is disabled.
+#[cfg(target_os = "linux")]
 #[allow(dead_code)]
 fn remove_kwin_window_rule() {
     // Find and remove QBZ rule from kwinrulesrc
@@ -363,30 +365,23 @@ fn remove_kwin_window_rule() {
 
 #[cfg(target_os = "linux")]
 fn apply_linux_webkit_workarounds() {
+    // NOTE: This function runs BEFORE main.rs GPU detection.
+    // It must NOT set WEBKIT_DISABLE_DMABUF_RENDERER or WEBKIT_DISABLE_COMPOSITING_MODE
+    // because main.rs handles those with full GPU detection context.
+    //
+    // This function only handles the legacy QBZ_WEBKIT_FORCE_GPU env var.
+
     let force_gpu = std::env::var("QBZ_WEBKIT_FORCE_GPU")
-        .map(|value| {
-            let normalized = value.trim().to_ascii_lowercase();
-            normalized == "1" || normalized == "true" || normalized == "yes"
+        .map(|v| {
+            let n = v.trim().to_ascii_lowercase();
+            n == "1" || n == "true" || n == "yes"
         })
         .unwrap_or(false);
 
     if force_gpu {
-        log::warn!("QBZ_WEBKIT_FORCE_GPU is enabled; skipping Linux WebKit safety workarounds");
-        return;
-    }
-
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        log::warn!(
-            "Enabled WEBKIT_DISABLE_DMABUF_RENDERER=1 (stability workaround for Linux WebKit/EGL teardown)"
-        );
-    }
-
-    if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
-        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
-        log::warn!(
-            "Enabled WEBKIT_DISABLE_COMPOSITING_MODE=1 (stability workaround for Linux WebKit/EGL teardown)"
-        );
+        log::warn!("QBZ_WEBKIT_FORCE_GPU is enabled; main.rs GPU logic will be skipped");
+        // Set markers so main.rs knows to skip its logic
+        std::env::set_var("QBZ_HARDWARE_ACCEL", "1");
     }
 }
 
@@ -418,7 +413,12 @@ fn should_use_main_window_transparency() -> bool {
 
 #[cfg(not(target_os = "linux"))]
 fn should_use_main_window_transparency() -> bool {
-    true
+    // On macOS, transparent WKWebView causes severe rendering performance issues
+    // (every frame must be composited through the transparent background).
+    // Default to opaque unless explicitly requested.
+    std::env::var("QBZ_FORCE_TRANSPARENT_WINDOWS")
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false)
 }
 
 pub fn run() {
@@ -552,6 +552,7 @@ pub fn run() {
     // No qdbus6 reconfigure call here — KWin picks it up on next restart, and
     // users affected can run `qdbus6 org.kde.KWin /KWin reconfigure` manually or
     // just restart their session. This block does nothing if the rule is absent.
+    #[cfg(target_os = "linux")]
     {
         if let Some(path) = dirs::config_dir().map(|d| d.join("kwinrulesrc")) {
             if let Ok(content) = std::fs::read_to_string(&path) {
@@ -725,7 +726,8 @@ pub fn run() {
                 "Main window transparency: {} (override with QBZ_FORCE_TRANSPARENT_WINDOWS=1 or QBZ_FORCE_OPAQUE_WINDOWS=1)",
                 main_window_transparent
             );
-            let main_window = tauri::WebviewWindowBuilder::new(
+            #[allow(unused_mut)]
+            let mut builder = tauri::WebviewWindowBuilder::new(
                 app,
                 "main",
                 tauri::WebviewUrl::App(std::path::PathBuf::from("index.html")),
@@ -733,11 +735,24 @@ pub fn run() {
             .title("QBZ")
             .inner_size(saved_win_width, saved_win_height)
             .min_inner_size(800.0, 600.0)
-            .decorations(use_system_titlebar)
+            .decorations(if cfg!(target_os = "macos") { true } else { use_system_titlebar })
             .transparent(main_window_transparent)
             .resizable(true)
-            .zoom_hotkeys_enabled(true)
-            .build()
+            .zoom_hotkeys_enabled(true);
+
+            // macOS: use overlay title bar style so content extends behind the title bar,
+            // and set background color to match the app theme
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::TitleBarStyle;
+                use tauri::window::Color;
+                builder = builder
+                    .title_bar_style(TitleBarStyle::Overlay)
+                    .hidden_title(true)
+                    .background_color(Color(0x0f, 0x0f, 0x0f, 0xff));
+            }
+
+            let main_window = builder.build()
             .map_err(|e| {
                 log::error!("Failed to create main window: {}", e);
                 e
@@ -1199,6 +1214,7 @@ pub fn run() {
             commands_v2::v2_plex_play_track,
             commands_v2::v2_set_visualizer_enabled,
             commands_v2::v2_get_developer_settings,
+            commands_v2::v2_get_runtime_diagnostics,
             commands_v2::v2_set_developer_force_dmabuf,
             commands_v2::v2_get_graphics_settings,
             commands_v2::v2_get_graphics_startup_status,
@@ -1481,6 +1497,8 @@ pub fn run() {
             commands_v2::v2_set_audio_dac_passthrough,
             commands_v2::v2_set_audio_pw_force_bitperfect,
             commands_v2::v2_set_sync_audio_on_startup,
+            commands_v2::v2_get_quality_fallback_behavior,
+            commands_v2::v2_set_quality_fallback_behavior,
             commands_v2::v2_set_audio_sample_rate,
             commands_v2::v2_set_audio_backend_type,
             commands_v2::v2_set_audio_alsa_plugin,
@@ -1564,6 +1582,7 @@ pub fn run() {
             commands_v2::v2_discogs_search_artwork,
             commands_v2::v2_discogs_download_artwork,
             commands_v2::v2_check_album_fully_cached,
+            commands_v2::v2_check_albums_fully_cached_batch,
             commands_v2::v2_purchases_get_all,
             commands_v2::v2_purchases_get_ids,
             commands_v2::v2_purchases_get_by_type,

@@ -16,7 +16,8 @@
     Cast,
     Mic2,
     Maximize2,
-    PictureInPicture2
+    PictureInPicture2,
+    AlertTriangle
   } from 'lucide-svelte';
   import QualityBadge from './QualityBadge.svelte';
   import AudioOutputBadges from './AudioOutputBadges.svelte';
@@ -28,9 +29,14 @@
     subscribe as subscribeOffline,
     isOffline as checkIsOffline,
     getOfflineReason,
+    refreshStatus,
     type OfflineReason
   } from '$lib/stores/offlineStore';
   import { toggleMute } from '$lib/stores/playerStore';
+  import {
+    subscribe as subscribeDegraded,
+    isDegraded
+  } from '$lib/stores/degradedStore';
   import type { QconnectSessionSnapshot } from '$lib/services/qconnectRuntime';
 
   interface Props {
@@ -160,6 +166,16 @@
     return unsubscribe;
   });
 
+  // Degraded service state
+  let isDegradedState = $state(isDegraded());
+
+  $effect(() => {
+    const unsubDegraded = subscribeDegraded(() => {
+      isDegradedState = isDegraded();
+    });
+    return unsubDegraded;
+  });
+
   // Get human-readable offline reason
   function getOfflineReasonText(reason: OfflineReason | null): string {
     switch (reason) {
@@ -172,6 +188,11 @@
       default:
         return $translateStore('offline.indicator');
     }
+  }
+
+  // Force an immediate network check when the offline indicator is clicked
+  async function handleCheckNetwork() {
+    await refreshStatus();
   }
 
   const effectiveTime = $derived(dragPreviewTime ?? currentTime);
@@ -420,13 +441,23 @@
     <!-- Right: Actions & Volume -->
     <div class="right-section">
       {#if isOffline}
-        <div
+        <button
           class="offline-indicator"
-          title={getOfflineReasonText(offlineReason)}
-          role="status"
-          aria-label={getOfflineReasonText(offlineReason)}
+          title={$translateStore('offline.checkNow')}
+          onclick={handleCheckNetwork}
+          aria-label={$translateStore('offline.checkNow')}
         >
           <img src="/offline-small.svg" alt="" class="offline-icon" aria-hidden="true" />
+        </button>
+      {/if}
+
+      {#if !isOffline && isDegradedState}
+        <div
+          class="degraded-indicator"
+          title={$translateStore('degraded.title')}
+          role="status"
+        >
+          <AlertTriangle size={16} />
         </div>
       {/if}
 
@@ -804,6 +835,26 @@
     height: 30px;
     border-radius: 6px;
     background: rgba(234, 179, 8, 0.15);
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: background-color 150ms ease;
+  }
+
+  .offline-indicator:hover {
+    background: rgba(234, 179, 8, 0.3);
+  }
+
+  /* Degraded Service Indicator */
+  .degraded-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    background: rgba(251, 146, 60, 0.15);
+    color: #fb923c;
     cursor: help;
   }
 

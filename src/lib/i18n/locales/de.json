@@ -735,7 +735,12 @@
       "streamBufferDesc": "Startet die Wiedergabe schneller, wenn der Titel nicht im Cache ist. Vorspulen kann während der initialen Pufferung eingeschränkt sein.",
       "streamBufferSeconds": "Sekunden zum Puffern vor dem Start der Wiedergabe ({seconds}s)",
       "disableCache": "Wiedergabe-Cache deaktivieren",
-      "disableCacheDesc": "Deaktiviert den temporären Cache. Nicht empfohlen ohne schnelle Verbindung. Offline-Bibliothekstitel werden immer zuerst abgespielt."
+      "disableCacheDesc": "Deaktiviert den temporären Cache. Nicht empfohlen ohne schnelle Verbindung. Offline-Bibliothekstitel werden immer zuerst abgespielt.",
+      "qualityFallback": "Wenn Qualitaetswiederholungen fehlschlagen",
+      "qualityFallbackDesc": "Was tun, wenn Qobuz-Server den Titel in keiner Qualitaet bereitstellen koennen",
+      "qualityFallbackAsk": "Mich fragen",
+      "qualityFallbackAlways": "Immer niedrigste Qualitaet versuchen",
+      "qualityFallbackSkip": "Immer Titel ueberspringen"
     },
     "appearance": {
       "title": "Darstellung",
@@ -1132,7 +1137,21 @@
       "verboseLogDisabled": "Ausführliche Log-Erfassung deaktiviert",
       "qconnectDevTools": "Qobuz Connect Entwicklertools",
       "qconnectDevToolsShow": "Entwickler-Panel anzeigen",
-      "qconnectDevToolsDesc": "Zeigt die erweiterte Verbindungsschaltfläche in der Playerleiste an"
+      "qconnectDevToolsDesc": "Zeigt die erweiterte Verbindungsschaltfläche in der Playerleiste an",
+      "diagnostics": {
+        "title": "Systemdiagnose",
+        "description": "Gespeicherte Einstellungen mit Laufzeitstatus vergleichen",
+        "refresh": "Aktualisieren",
+        "export": "In Zwischenablage kopieren",
+        "exported": "Kopiert!",
+        "sectionAudio": "Audio",
+        "sectionGraphics": "Grafik & Rendering",
+        "sectionEnv": "Umgebungsvariablen",
+        "colSetting": "Einstellung",
+        "colSaved": "Gespeichert",
+        "colRuntime": "Laufzeit",
+        "colStatus": "Status"
+      }
     },
     "blacklist": {
       "title": "Künstler-Blacklist",
@@ -1438,6 +1457,7 @@
     "trackNotAvailable": "Dieser Titel ist offline nicht verfügbar",
     "featureDisabled": "Diese Funktion erfordert eine Internetverbindung",
     "startWithoutLogin": "Offline starten (kein Zugriff auf Qobuz™-Dienste)",
+    "noPreviousSession": "Sie müssen sich mindestens einmal anmelden, bevor Sie den Offline-Modus verwenden können. Stellen Sie eine Internetverbindung her und melden Sie sich an.",
     "noNetworkToast": "Keine Internetverbindung verfügbar",
     "checkingNetwork": "Netzwerkverbindung wird überprüft...",
     "available": "Vollständig offline verfügbar",
@@ -1452,7 +1472,12 @@
     "allowAccumulatedScrobblingDesc": "Scrobbles in Warteschlange stellen und später synchronisieren, wenn wieder online",
     "scrobbleTimeLimit": "Last.fm akzeptiert Scrobbles bis zu 2 Wochen alt",
     "showNetworkFolders": "Netzwerkordner-Inhalt anzeigen",
-    "showNetworkFoldersDesc": "Inhalte aus eingebundenen Netzwerkordnern (NAS, Samba usw.) im manuellen Offline-Modus anzeigen"
+    "showNetworkFoldersDesc": "Inhalte aus eingebundenen Netzwerkordnern (NAS, Samba usw.) im manuellen Offline-Modus anzeigen",
+    "checkNow": "Jetzt pruefen"
+  },
+  "degraded": {
+    "title": "Dienst beeintraechtigt",
+    "description": "Die Qobuz-Server haben Probleme. Die Wiedergabe erfordert moeglicherweise mehr Versuche oder niedrigere Qualitaet."
   },
   "download": {
     "makeAvailable": "Offline verfügbar machen",
@@ -1602,6 +1627,8 @@
         "fedora": "Fedora / RHEL",
         "arch": "Arch / Manjaro / EndeavourOS",
         "opensuse": "openSUSE",
+        "gentoo": "Gentoo / Funtoo (OpenRC)",
+        "void": "Void Linux (runit)",
         "other": "Andere"
       },
       "otherHint": "Stellen Sie sicher, dass diese Pakete (oder Äquivalente) installiert sind: pipewire, pipewire-pulse, wireplumber, alsa-utils"
@@ -1681,7 +1708,8 @@
       "failed": "Fehlgeschlagen",
       "skip": "Überspringen",
       "rollbackTitle": "Sicherung wiederherstellen",
-      "rollbackHint": "Führen Sie diese Befehle aus, um Ihre vorherige Konfiguration wiederherzustellen:"
+      "rollbackHint": "Führen Sie diese Befehle aus, um Ihre vorherige Konfiguration wiederherzustellen:",
+      "postCloseHint": "Schließen Sie diesen Assistenten zuerst, dann überprüfen Sie in einem Terminal. Diese Anweisungen dienen als Referenz — Sie können den Assistenten jederzeit unter Einstellungen > Audio erneut öffnen."
     },
     "done": {
       "title": "Einrichtung abgeschlossen",
@@ -1923,5 +1951,14 @@
     "thisDevice": "Dieses Gerät",
     "experimentalWarning": "Qobuz Connect ist experimentell. Fehler sind wahrscheinlich — bitte melden Sie diese im entsprechenden Bereich.",
     "localLibraryWarning": "Während Qobuz Connect aktiv ist, ist die lokale Bibliothek nicht kompatibel, da Qobuz Connect keine Nicht-Qobuz-Inhalte unterstützt."
+  },
+  "qualityFallback": {
+    "title": "Streaming-Problem",
+    "body": "Qobuz hat Probleme beim Bereitstellen von \"{track}\". Alle Qualitaetsstufen fehlgeschlagen. Mit der niedrigsten verfuegbaren Qualitaet versuchen?",
+    "tryLower": "Niedrigere Qualitaet versuchen",
+    "skip": "Titel ueberspringen",
+    "rememberChoice": "Meine Wahl merken",
+    "autoRetrying": "Erneuter Versuch mit niedrigerer Qualitaet...",
+    "autoSkipping": "Titel wird uebersprungen (Serverproblem)..."
   }
 }

@@ -785,7 +785,12 @@
       "streamBufferDesc": "Start playback faster when track is not in cache. Seeking may be limited during initial buffering.",
       "streamBufferSeconds": "Seconds to buffer before starting playback ({seconds}s)",
       "disableCache": "Disable Playback Cache",
-      "disableCacheDesc": "Disables temporary cache. Not recommended without a fast connection. Offline library tracks always play first."
+      "disableCacheDesc": "Disables temporary cache. Not recommended without a fast connection. Offline library tracks always play first.",
+      "qualityFallback": "When quality retries fail",
+      "qualityFallbackDesc": "What to do when Qobuz servers can't serve the track at any quality",
+      "qualityFallbackAsk": "Ask me",
+      "qualityFallbackAlways": "Always try lowest quality",
+      "qualityFallbackSkip": "Always skip track"
     },
     "appearance": {
       "title": "Appearance",
@@ -1214,7 +1219,21 @@
       "verboseLogDisabled": "Verbose log capture disabled",
       "qconnectDevTools": "Qobuz Connect Dev Tools",
       "qconnectDevToolsShow": "Show Dev Panel Button",
-      "qconnectDevToolsDesc": "Show the advanced connection screen button in the player bar"
+      "qconnectDevToolsDesc": "Show the advanced connection screen button in the player bar",
+      "diagnostics": {
+        "title": "System Diagnostics",
+        "description": "Compare saved settings against runtime state",
+        "refresh": "Refresh",
+        "export": "Export to Clipboard",
+        "exported": "Copied!",
+        "sectionAudio": "Audio",
+        "sectionGraphics": "Graphics & Rendering",
+        "sectionEnv": "Environment Variables",
+        "colSetting": "Setting",
+        "colSaved": "Saved",
+        "colRuntime": "Runtime",
+        "colStatus": "Status"
+      }
     },
     "blacklist": {
       "title": "Artist Blacklist",
@@ -1546,6 +1565,7 @@
     "trackNotAvailable": "This track is not available offline",
     "featureDisabled": "This feature requires internet connection",
     "startWithoutLogin": "Start offline (no access to Qobuz™ services)",
+    "noPreviousSession": "You need to log in at least once before using offline mode. Connect to the internet and log in to create your profile.",
     "noNetworkToast": "No internet connection available",
     "checkingNetwork": "Checking network connection...",
     "available": "Fully Available Offline",
@@ -1560,7 +1580,12 @@
     "allowAccumulatedScrobblingDesc": "Queue scrobbles for later when back online",
     "scrobbleTimeLimit": "Last.fm accepts scrobbles up to 2 weeks old",
     "showNetworkFolders": "Show Network Folder Content",
-    "showNetworkFoldersDesc": "Display content from network-mounted folders (NAS, Samba, etc.) while in manual offline mode"
+    "showNetworkFoldersDesc": "Display content from network-mounted folders (NAS, Samba, etc.) while in manual offline mode",
+    "checkNow": "Check now"
+  },
+  "degraded": {
+    "title": "Service degraded",
+    "description": "Qobuz servers are experiencing issues. Playback may require more retries or lower quality."
   },
   "download": {
     "makeAvailable": "Make available offline",
@@ -1686,6 +1711,8 @@
         "fedora": "Fedora / RHEL",
         "arch": "Arch / Manjaro / EndeavourOS",
         "opensuse": "openSUSE",
+        "gentoo": "Gentoo / Funtoo (OpenRC)",
+        "void": "Void Linux (runit)",
         "other": "Other"
       },
       "otherHint": "Ensure these packages (or equivalents) are installed: pipewire, pipewire-pulse, wireplumber, alsa-utils"
@@ -1765,7 +1792,8 @@
       "failed": "Failed",
       "skip": "Skip",
       "rollbackTitle": "Restore Backup",
-      "rollbackHint": "Run these commands to restore your previous configuration:"
+      "rollbackHint": "Run these commands to restore your previous configuration:",
+      "postCloseHint": "Close this wizard first, then verify in a terminal. These instructions are for reference — you can always re-open the wizard from Settings > Audio."
     },
     "done": {
       "title": "Setup Complete",
@@ -2148,5 +2176,14 @@
     "album": "Album",
     "duration": "Duration",
     "quality": "Quality"
+  },
+  "qualityFallback": {
+    "title": "Streaming issue",
+    "body": "Qobuz is having trouble serving \"{track}\". All quality levels failed. Try at the lowest available quality?",
+    "tryLower": "Try lower quality",
+    "skip": "Skip track",
+    "rememberChoice": "Remember my choice",
+    "autoRetrying": "Retrying at lower quality...",
+    "autoSkipping": "Skipping track (server issue)..."
   }
 }

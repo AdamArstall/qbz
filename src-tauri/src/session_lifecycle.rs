@@ -315,9 +315,10 @@ pub async fn deactivate_session(app: &tauri::AppHandle) -> Result<(), String> {
     crate::commands::user_session::teardown_type_alias_state(&*subscription_state);
     crate::commands::user_session::teardown_type_alias_state(&*download_settings);
 
-    // Clear the active user and persisted last_user_id
+    // Clear the active user but KEEP last_user_id on disk.
+    // Offline mode needs it to load the user's library and settings
+    // even after logout.
     user_paths.clear_user();
-    UserDataPaths::clear_last_user_id();
 
     // Update runtime state - clear BOTH auth and session
     runtime_manager.manager().set_legacy_auth(false, None).await;
@@ -337,19 +338,22 @@ pub async fn deactivate_session(app: &tauri::AppHandle) -> Result<(), String> {
 /// Activate an offline-only session (no remote auth required).
 ///
 /// This creates a minimal session for offline/local library use.
-/// Uses user_id = 0 as a special "offline user" marker.
+/// Activates an offline session using the last known user profile.
+/// If no previous session exists, falls back to user_id = 0 (empty profile).
 pub async fn activate_offline_session(app: &tauri::AppHandle) -> Result<(), String> {
-    log::info!("[SessionLifecycle] Activating offline session");
-
-    // For offline mode, we use a special user_id of 0
-    // This is distinct from authenticated users
-    const OFFLINE_USER_ID: u64 = 0;
+    // Use last known user_id so offline mode has access to existing library,
+    // settings, and cached data. Fall back to 0 if never logged in.
+    let offline_user_id = UserDataPaths::load_last_user_id().unwrap_or(0);
+    log::info!(
+        "[SessionLifecycle] Activating offline session (user_id={}{})",
+        offline_user_id,
+        if offline_user_id == 0 { " — no previous session" } else { "" }
+    );
 
     let user_paths = app.state::<UserDataPaths>();
     let runtime_manager = app.state::<RuntimeManagerState>();
 
-    // Set user to offline user for path resolution
-    user_paths.set_user(OFFLINE_USER_ID);
+    user_paths.set_user(offline_user_id);
 
     // Resolve directories (same as normal user but at user_id=0)
     let data_dir = user_paths.user_data_dir()?;
@@ -360,19 +364,41 @@ pub async fn activate_offline_session(app: &tauri::AppHandle) -> Result<(), Stri
     std::fs::create_dir_all(&cache_dir)
         .map_err(|e| format!("Failed to create offline cache dir: {}", e))?;
 
-    // Initialize only the stores needed for offline operation
+    // Initialize all per-user stores needed for offline operation.
+    // This mirrors activate_session but skips online-only services
+    // (MusicBrainz, ListenBrainz, Last.fm, API cache, artist vectors).
     let library = app.state::<crate::library::commands::LibraryState>();
     let offline = app.state::<crate::offline::OfflineState>();
     let offline_cache = app.state::<crate::offline_cache::OfflineCacheState>();
     let audio_settings = app.state::<crate::config::audio_settings::AudioSettingsState>();
     let playback_prefs =
         app.state::<crate::config::playback_preferences::PlaybackPreferencesState>();
+    let session_store = app.state::<crate::session_store::SessionStoreState>();
+    let download_settings = app.state::<crate::config::download_settings::DownloadSettingsState>();
+    let favorites_cache = app.state::<crate::config::favorites_cache::FavoritesCacheState>();
+    let tray_settings = app.state::<crate::config::tray_settings::TraySettingsState>();
+    let favorites_prefs =
+        app.state::<crate::config::favorites_preferences::FavoritesPreferencesState>();
 
     library.init_at(&data_dir).await?;
     offline.init_at(&data_dir)?;
     offline_cache.init_at(&cache_dir).await?;
     offline_cache.init_library_connection(&data_dir).await?;
     audio_settings.init_at(&data_dir)?;
+    session_store.init_at(&data_dir)?;
+    favorites_cache.init_at(&data_dir)?;
+    favorites_prefs.init_at(&data_dir)?;
+    tray_settings.init_at(&data_dir)?;
+
+    // Download settings — needed for "Show in Local Library" toggle
+    {
+        use crate::config::download_settings::DownloadSettingsStore;
+        crate::commands::user_session::init_type_alias_state(
+            &*download_settings,
+            &data_dir,
+            DownloadSettingsStore::new_at,
+        )?;
+    }
 
     // Sync audio settings to CoreBridge player (same as normal session)
     {
@@ -400,14 +426,14 @@ pub async fn activate_offline_session(app: &tauri::AppHandle) -> Result<(), Stri
     // But session_activated is true so queue commands work
     runtime_manager
         .manager()
-        .set_session_activated(true, OFFLINE_USER_ID)
+        .set_session_activated(true, offline_user_id)
         .await;
 
     // Emit event
     let _ = app.emit(
         "runtime:event",
         RuntimeEvent::UserSessionActivated {
-            user_id: OFFLINE_USER_ID,
+            user_id: offline_user_id,
         },
     );
 

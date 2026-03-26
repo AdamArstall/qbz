@@ -279,7 +279,8 @@
     loadSystemNotificationsPreference,
     showTrackNotification,
     updateLastfmNowPlaying,
-    cleanup as cleanupPlayback
+    cleanup as cleanupPlayback,
+    type PlayTrackOptions
   } from '$lib/services/playbackService';
   import {
     isPlaybackSourceLocal,
@@ -388,6 +389,7 @@
   import TitleBarNav from '$lib/components/TitleBarNav.svelte';
   import Sidebar from '$lib/components/Sidebar.svelte';
   import AboutModal from '$lib/components/AboutModal.svelte';
+  import QualityFallbackModal from '$lib/components/QualityFallbackModal.svelte';
   import NowPlayingBar from '$lib/components/NowPlayingBar.svelte';
   import QconnectPanel from '$lib/components/QconnectPanel.svelte';
   import Toast from '$lib/components/Toast.svelte';
@@ -476,6 +478,7 @@
   // Title Bar State (from titleBarStore subscription)
   let showTitleBar = $state(shouldShowTitleBar());
   let showWindowControls = $state(getShowWindowControls());
+  const isMacOS = typeof document !== 'undefined' && document.documentElement.classList.contains('macos');
 
   // Search Bar Location State
   let searchBarLocationPref = $state(getSearchBarLocation());
@@ -530,7 +533,7 @@
       }
     };
     mainContentEl.addEventListener('scroll', handler, true);
-    return () => mainContentEl!.removeEventListener('scroll', handler, true);
+    return () => mainContentEl?.removeEventListener('scroll', handler, true);
   });
 
   // Reset scroll state on view or item change (but not on back/forward — that restores saved position)
@@ -869,6 +872,12 @@
   let isShortcutsModalOpen = $state(false);
   let isKeybindingsSettingsOpen = $state(false);
   let isLinkResolverOpen = $state(false);
+
+  // Quality Fallback Modal State
+  let isQualityFallbackOpen = $state(false);
+  let qualityFallbackTrackTitle = $state('');
+  let qualityFallbackTrack = $state<PlayingTrack | null>(null);
+  let qualityFallbackOptions = $state<PlayTrackOptions>({});
 
   // Track Info Modal State
   let isTrackInfoOpen = $state(false);
@@ -2198,8 +2207,8 @@
   }
 
   async function handleVolumeChange(newVolume: number) {
-    // ALSA Direct hw: locks volume at 100%
-    if (isAlsaDirectHw) return;
+    // ALSA Direct hw: locks volume at 100% — unless controlling a remote renderer
+    if (isAlsaDirectHw && !qconnectPeerRendererActive) return;
 
     try {
       const handledRemotely = await invoke<boolean>('v2_qconnect_set_volume_if_remote', { volume: newVolume });
@@ -2216,8 +2225,8 @@
   }
 
   async function handleToggleMute() {
-    // ALSA Direct hw: locks volume at 100%
-    if (isAlsaDirectHw) return;
+    // ALSA Direct hw: locks volume at 100% — unless controlling a remote renderer
+    if (isAlsaDirectHw && !qconnectPeerRendererActive) return;
 
     // Determine current mute state from volume
     const currentlyMuted = volume === 0;
@@ -3404,16 +3413,27 @@
 
   // Auth Handlers
   async function handleStartOffline() {
-    // Enable manual offline mode and enter app without authentication
-    await setManualOffline(true);
-
-    // Activate offline session in backend (initializes minimal stores, sets session_activated=true)
-    // This allows queue commands to work even without remote auth
+    // Activate offline session FIRST — this initializes per-user stores
+    // (library, offline cache, audio settings) using the last known user profile.
+    // Must happen before setManualOffline which requires an active store.
     try {
       await invoke('v2_activate_offline_session');
     } catch (err) {
       console.error('[Offline] Failed to activate offline session:', err);
-      // Continue anyway - offline mode should be best-effort
+      // If no previous session exists, show friendly message
+      const errStr = String(err);
+      if (errStr.includes('No active session') || errStr.includes('no previous session')) {
+        showToast($t('offline.noPreviousSession'), 'error');
+        return;
+      }
+      // Continue for other errors - offline mode should be best-effort
+    }
+
+    // Now that stores are initialized, enable manual offline mode
+    try {
+      await setManualOffline(true);
+    } catch (err) {
+      console.warn('[Offline] setManualOffline failed (non-fatal):', err);
     }
 
     setLoggedIn({
@@ -3822,9 +3842,64 @@
     return albumDownloadCache.get(albumId) || false;
   }
 
+  // Quality Fallback Modal handlers
+  async function handleQualityFallbackTryLower() {
+    isQualityFallbackOpen = false;
+    if (qualityFallbackTrack) {
+      await playTrack(qualityFallbackTrack, { ...qualityFallbackOptions, forceLowestQuality: true });
+    }
+  }
+
+  async function handleQualityFallbackSkip() {
+    isQualityFallbackOpen = false;
+    const next = await nextTrack();
+    if (next) {
+      const nextSource = resolvePlaybackSource(next);
+      const nextIsLocal = isPlaybackSourceLocal(nextSource, next.is_local ?? false);
+      const nextSamplingRate = next.sample_rate == null
+        ? undefined
+        : nextIsLocal
+          ? next.sample_rate / 1000
+          : next.sample_rate;
+      await playTrack({
+        id: next.id,
+        title: next.title,
+        artist: next.artist,
+        album: next.album,
+        duration: next.duration_secs,
+        artwork: next.artwork_url || '',
+        quality: next.hires ? 'Hi-Res' : 'CD Quality',
+        albumId: next.album_id || undefined,
+        artistId: next.artist_id || undefined,
+        bitDepth: next.bit_depth || undefined,
+        samplingRate: nextSamplingRate,
+        source: nextSource,
+        isLocal: nextIsLocal
+      }, {
+        isLocal: nextIsLocal,
+        source: nextSource,
+        showLoadingToast: true,
+        showSuccessToast: true
+      });
+    } else {
+      setIsPlaying(false);
+    }
+  }
+
   onMount(() => {
     // Bootstrap app (theme, mouse nav, Last.fm restore)
     const { cleanup: cleanupBootstrap } = bootstrapApp();
+
+    // Quality fallback modal listener
+    function handleQualityFallbackPrompt(e: Event) {
+      const detail = (e as CustomEvent).detail;
+      qualityFallbackTrackTitle = detail.trackTitle;
+      qualityFallbackTrack = detail.track;
+      qualityFallbackOptions = detail.options;
+      isQualityFallbackOpen = true;
+    }
+    window.addEventListener('quality-fallback-prompt', handleQualityFallbackPrompt);
+
     void refreshQobuzConnectRuntimeState();
     const qobuzConnectStatusInterval = setInterval(() => {
       if (isQconnectPanelOpen || isQobuzConnectConnected) {
@@ -4613,6 +4688,7 @@
       unregisterAll(); // Cleanup keybinding actions
       clearInterval(qobuzConnectStatusInterval);
       clearInterval(qconnectPositionReportInterval);
+      window.removeEventListener('quality-fallback-prompt', handleQualityFallbackPrompt);
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       stopOfflineCacheEventListeners();
@@ -4759,6 +4835,10 @@
   <LoginView onLoginSuccess={handleLoginSuccess} onStartOffline={handleStartOffline} />
 {:else}
   <div class="app" class:no-titlebar={!showTitleBar} class:floating={isWindowFloating}>
+    <!-- macOS: drag region for window movement (overlay title bar has no native drag area) -->
+    {#if !showTitleBar && isMacOS}
+      <div class="macos-drag-region" data-tauri-drag-region></div>
+    {/if}
     <!-- Custom Title Bar (CSD) -->
     {#if showTitleBar}
       <TitleBar
@@ -5577,7 +5657,7 @@
         onToggleQconnectConnection={handleQobuzConnectButton}
         qconnectBusy={qobuzConnectBusy}
         {showQconnectDevButton}
-        volumeLocked={isAlsaDirectHw}
+        volumeLocked={isAlsaDirectHw && !qconnectPeerRendererActive}
       />
     {:else}
       <NowPlayingBar
@@ -5599,7 +5679,7 @@
         onToggleQconnectConnection={handleQobuzConnectButton}
         qconnectBusy={qobuzConnectBusy}
         {showQconnectDevButton}
-        volumeLocked={isAlsaDirectHw}
+        volumeLocked={isAlsaDirectHw && !qconnectPeerRendererActive}
       />
     {/if}
 
@@ -5709,6 +5789,15 @@
     <AboutModal
       isOpen={isAboutModalOpen}
       onClose={() => isAboutModalOpen = false}
+    />
+
+    <!-- Quality Fallback Modal -->
+    <QualityFallbackModal
+      isOpen={isQualityFallbackOpen}
+      trackTitle={qualityFallbackTrackTitle}
+      onTryLower={handleQualityFallbackTryLower}
+      onSkip={handleQualityFallbackSkip}
+      onClose={() => isQualityFallbackOpen = false}
     />
 
     <!-- Keyboard Shortcuts Modal -->
@@ -5883,6 +5972,17 @@
   .app.no-titlebar .content-area,
   .app.no-titlebar .main-content {
     height: calc(100vh - 104px); /* Only 104px NowPlayingBar, no title bar */
+  }
+
+  /* macOS: invisible drag region for window movement (overlay title bar) */
+  :global(html.macos) .macos-drag-region {
+    height: 28px;
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 9999;
+    -webkit-app-region: drag;
   }
 
   .view-error {

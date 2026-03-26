@@ -1,3 +1,26 @@
+<script lang="ts" module>
+  // Init system commands per distro — exported for use by DACSetupWizard
+  export const restartCommands: Record<string, string> = {
+    debian: 'systemctl --user restart pipewire pipewire-pulse wireplumber',
+    fedora: 'systemctl --user restart pipewire pipewire-pulse wireplumber',
+    arch: 'systemctl --user restart pipewire pipewire-pulse wireplumber',
+    opensuse: 'systemctl --user restart pipewire pipewire-pulse wireplumber',
+    gentoo: '# Depends on your init system:\n# OpenRC: rc-service pipewire restart\n# systemd: systemctl --user restart pipewire pipewire-pulse wireplumber',
+    void: 'sv restart pipewire && sv restart wireplumber',
+    other: '# Restart PipeWire using your init system'
+  };
+
+  export const statusCommands: Record<string, string> = {
+    debian: 'systemctl --user status pipewire pipewire-pulse wireplumber',
+    fedora: 'systemctl --user status pipewire pipewire-pulse wireplumber',
+    arch: 'systemctl --user status pipewire pipewire-pulse wireplumber',
+    opensuse: 'systemctl --user status pipewire pipewire-pulse wireplumber',
+    gentoo: '# Check PipeWire is running:\npw-cli info 0',
+    void: 'sv status pipewire wireplumber',
+    other: '# Check PipeWire is running:\npw-cli info 0'
+  };
+</script>
+
 <script lang="ts">
   import { t } from '$lib/i18n';
   import CommandBlock from './CommandBlock.svelte';
@@ -14,6 +37,8 @@
     { id: 'fedora', labelKey: 'dacWizard.precheck.distros.fedora' },
     { id: 'arch', labelKey: 'dacWizard.precheck.distros.arch' },
     { id: 'opensuse', labelKey: 'dacWizard.precheck.distros.opensuse' },
+    { id: 'gentoo', labelKey: 'dacWizard.precheck.distros.gentoo' },
+    { id: 'void', labelKey: 'dacWizard.precheck.distros.void' },
     { id: 'other', labelKey: 'dacWizard.precheck.distros.other' },
   ];
 
@@ -30,6 +55,12 @@
     ],
     opensuse: [
       'sudo zypper install pipewire pipewire-pulseaudio wireplumber alsa-utils'
+    ],
+    gentoo: [
+      'sudo emerge media-video/pipewire media-video/wireplumber media-sound/alsa-utils'
+    ],
+    void: [
+      'sudo xbps-install pipewire wireplumber alsa-utils'
     ],
     other: []
   };
