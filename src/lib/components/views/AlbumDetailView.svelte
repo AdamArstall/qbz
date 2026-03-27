@@ -704,7 +704,7 @@
               class="carousel-btn"
               onclick={() => scrollCarousel('left')}
               disabled={!canScrollLeft}
-              aria-label="Previous albums"
+              aria-label={$t('actions.previousAlbums')}
             >
               <ChevronLeft size={20} />
             </button>
@@ -712,7 +712,7 @@
               class="carousel-btn"
               onclick={() => scrollCarousel('right')}
               disabled={!canScrollRight}
-              aria-label="Next albums"
+              aria-label={$t('actions.nextAlbums')}
             >
               <ChevronRight size={20} />
             </button>
