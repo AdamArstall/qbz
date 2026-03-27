@@ -1831,7 +1831,7 @@
           class="network-btn"
           class:active={showNetworkSidebar}
           onclick={handleToggleNetworkSidebar}
-          title="Artist Network"
+          title={$t('actions.artistNetwork')}
         >
           <img src="/element-connect.svg" alt="Network" class="network-icon" />
         </button>
@@ -1847,7 +1847,7 @@
               class:active={showHideDropdown}
               class:is-hidden={artistIsBlacklisted}
               onclick={() => showHideDropdown = !showHideDropdown}
-              title={artistIsBlacklisted ? 'Artist is hidden' : 'Hide artist options'}
+              title={artistIsBlacklisted ? $t('actions.hide.hiddenArtist') : $t('actions.hide.hideArtistOptions')}
             >
               <img src="/blind-eye.svg" alt="" class="hide-icon" />
             </button>
@@ -1860,21 +1860,21 @@
                 >
                   <div class="hide-option-header">
                     {#if artistIsBlacklisted}
-                      <span>Show this artist</span>
+                      <span>{$t('actions.hide.showArtist')}</span>
                     {:else}
-                      <span>Hide this artist</span>
+                      <span>{$t('actions.hide.hideArtist')}</span>
                     {/if}
                   </div>
                   <p class="hide-option-desc">
                     {#if artistIsBlacklisted}
-                      Show this artist in searches, playlists, discover, etc.
+                      {$t('artist.artistIsBlacklisted')}
                     {:else}
-                      Don't show this artist in searches, playlists, discover, etc.
+                      {$t('artist.artistIsNotBlacklisted')}
                     {/if}
                   </p>
                   <p class="hide-option-hint">
                     <Settings size={12} />
-                    Blacklist can be managed from settings.
+                    {$t('artist.manageBlacklistFromSettings')}
                   </p>
                 </button>
               </div>
@@ -1891,9 +1891,9 @@
   {#if contentFilteringEnabled && artistIsBlacklisted}
     <div class="blacklist-banner">
       <img src="/blind-eye.svg" alt="" class="banner-icon" />
-      <span>This artist is hidden. Their music won't appear in search, radio, or suggestions.</span>
+      <span>{$t('artist.blacklistBanner')}</span>
       <button class="unblock-btn" onclick={toggleBlacklist} disabled={isBlacklistLoading}>
-        Show Artist
+        {$t('actions.hide.showArtist')}
       </button>
     </div>
   {/if}
@@ -1945,7 +1945,7 @@
                   class="search-nav-btn"
                   onclick={prevResult}
                   disabled={totalFilteredResults === 0}
-                  title="Previous result (Shift+Enter)"
+                  title="{$t('artist.search.previousResult')} ({$t('keys.shift')}+{$t('keys.enter')})"
                 >
                   <ChevronLeft size={16} />
                 </button>
@@ -1953,18 +1953,18 @@
                   class="search-nav-btn"
                   onclick={nextResult}
                   disabled={totalFilteredResults === 0}
-                  title="Next result (Enter)"
+                  title="{$t('artist.search.nextResult')} ({$t('keys.enter')})"
                 >
                   <ChevronRight size={16} />
                 </button>
               {/if}
-              <button class="search-close-btn" onclick={toggleSearch} title="Close search">
+              <button class="search-close-btn" onclick={toggleSearch} title={$t('artist.search.close')}>
                 <X size={16} />
               </button>
             </div>
           </div>
         {:else}
-          <button class="search-toggle" onclick={toggleSearch} title="Search in this page">
+          <button class="search-toggle" onclick={toggleSearch} title={$t('artist.search.searchInPage')}>
             <Search size={18} />
           </button>
         {/if}
@@ -2244,7 +2244,7 @@
     </div>
 
     {#if artist.albums.length === 0}
-      <div class="no-albums">No albums found</div>
+      <div class="no-albums">{$t('library.noAlbumsFound')}</div>
     {:else}
         <div class="albums-grid">
           {#each filteredAlbums as album}
@@ -2763,7 +2763,7 @@
 
         <!-- Labels Section -->
         <section class="sidebar-section">
-          <h4 class="section-label">LABELS</h4>
+          <h4 class="section-label">{$t('artist.labels')}</h4>
           <div class="section-items">
             {#if artist.labels.length > 0}
               {#each artist.labels as label}
@@ -2784,7 +2784,7 @@
 
         <!-- Similar Artists Section -->
         <section class="sidebar-section">
-          <h4 class="section-label">{$t('artist.similarArtists')}</h4>
+          <h4 class="section-label">{$t('artist.similarArtists').toUpperCase()}</h4>
           <div class="section-items">
             {#if similarArtistsLoading}
               <span class="placeholder-text">{$t('actions.loading')}</span>
@@ -2875,7 +2875,7 @@
         <!-- Discovery: "You may also like" (MusicBrainz tag-based) -->
         {#if mbAvailable && (discoveryLoading || discoveryArtists.length > 0)}
           <section class="sidebar-section">
-            <h4 class="section-label">{$t('artist.youMayAlsoLike')}</h4>
+            <h4 class="section-label">{$t('artist.youMayAlsoLike').toUpperCase()}</h4>
             <div class="section-items">
               {#if discoveryLoading}
                 <span class="placeholder-text">{$t('actions.loading')}</span>
