@@ -426,8 +426,8 @@
       case 'default': return $t('sort.default');
       case 'newest': return $t('sort.newest');
       case 'oldest': return $t('sort.oldest');
-      case 'title-asc': return $t('sort.titleAsc');
-      case 'title-desc': return $t('sort.titleDesc');
+      case 'title-asc': return $t('sort.titleAZ');
+      case 'title-desc': return $t('sort.titleZA');
     }
   }
 
