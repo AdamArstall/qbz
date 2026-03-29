@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { ArrowLeft, Search, X, Trash2, Ban, ToggleLeft, ToggleRight, AlertCircle } from 'lucide-svelte';
   import ViewTransition from '../ViewTransition.svelte';
-  import { t } from '$lib/i18n';
+  import { t, locale } from '$lib/i18n';
   import { showToast } from '$lib/stores/toastStore';
   import {
     subscribe,
@@ -95,7 +95,7 @@
   }
 
   function formatDate(timestamp: number): string {
-    return new Date(timestamp * 1000).toLocaleDateString(undefined, {
+    return new Date(timestamp * 1000).toLocaleDateString($locale ? $locale : 'en-us', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
