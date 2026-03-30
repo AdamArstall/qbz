@@ -216,7 +216,7 @@
     "stats": "{albums} albums • {tracks} titres • {duration} • {size}",
     "scanLibrary": "Analyser la bibliothèque",
     "viewHiddenAlbums": "Voir les albums cachés",
-    "showActiveAlbums": "Show Active Albums",
+    "showActiveAlbums": "Voir les albums actifs",
     "fetchMissingArtwork": "Récupérer les illustrations manquantes",
     "maintenance": "MAINTENANCE",
     "dangerZone": "ZONE DANGER",
@@ -634,7 +634,7 @@
       "fix": "Activez DAC Passthrough ou Mode Exclusif dans les Paramètres"
     },
     "stereo": "Stéréo",
-    "Mono": "Mono"
+    "mono": "Mono"
   },
   "actions": {
     "play": "Lecture",

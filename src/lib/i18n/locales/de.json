@@ -213,6 +213,7 @@
     "stats": "{albums} Alben • {tracks} Titel • {duration} • {size}",
     "scanLibrary": "Bibliothek scannen",
     "viewHiddenAlbums": "Versteckte Alben anzeigen",
+    "showActiveAlbums": "Aktive Alben anzeigen",
     "fetchMissingArtwork": "Fehlendes Artwork abrufen",
     "maintenance": "WARTUNG",
     "dangerZone": "GEFAHRENZONE",
@@ -249,7 +250,11 @@
     "hideAlbum": "Dieses Album in der Bibliothek ausblenden",
     "hideAlbumHint": "Verborgene Alben können unter Einstellungen angezeigt werden",
     "localTrackIndicator": "Lokaler Titel - nur auf diesem Gerät verfügbar",
-    "plexTrackIndicator": "Plex-Titel - aus deiner lokalen Plex-Bibliothek bereitgestellt"
+    "plexTrackIndicator": "Plex-Titel - aus deiner lokalen Plex-Bibliothek bereitgestellt",
+    "refreshMetadata": "Metadaten aktualisieren",
+    "albumSettings": "Albumeinstellungen",
+    "albumArtwork": "Album-Artwork",
+    "uploadCover": "Cover hochladen"
   },
   "album": {
     "tracks": "Titel",
@@ -282,7 +287,9 @@
     "bookletError": "Booklet konnte nicht geladen werden",
     "bookletFitWidth": "An Breite anpassen",
     "bookletRotate": "Drehen",
-    "bookletDownload": "Booklet speichern"
+    "bookletDownload": "Booklet speichern",
+    "sameArtist": "Vom selben Künstler",
+    "seeFullDiscography": "Vollständige Diskografie ansehen"
   },
   "artist": {
     "albums": "Alben",
@@ -312,10 +319,13 @@
     "customImageRemoved": "Eigenes Künstlerbild entfernt",
     "customImageError": "Fehler beim Aktualisieren des Künstlerbilds",
     "imageSaved": "Künstlerbild gespeichert",
+    "labels": "Labels",
     "youMayAlsoLike": "DAS KÖNNTE DIR AUCH GEFALLEN",
     "dismissRecommendation": "Keine gute Empfehlung",
     "founded": "Gegründet:",
+    "disbanded": "Aufgelöst:",
     "born": "Geboren:",
+    "died": "Gestorben:",
     "foundedIn": "Gegründet in:",
     "bornIn": "Geboren in:",
     "from": "Aus:",
@@ -326,7 +336,19 @@
     "sceneStep1": "Suche nach {genre}-Künstlern auf MusicBrainz...",
     "sceneStep2": "Analyse der Genre-Affinität von {count} Kandidaten...",
     "sceneStep3": "Überprüfe Verfügbarkeit auf Qobuz...",
-    "sceneStep4": "Ergebnisse werden vorbereitet..."
+    "sceneStep4": "Ergebnisse werden vorbereitet...",
+    "jumpTo": "Springen zu",
+    "about": "Über",
+    "artistIsBlacklisted": "Diesen Künstler in Suchen, Playlists, Entdecken usw. anzeigen",
+    "artistIsNotBlacklisted": "Diesen Künstler nicht in Suchen, Playlists, Entdecken usw. anzeigen",
+    "manageBlacklistFromSettings": "Die Blacklist kann in den Einstellungen verwaltet werden.",
+    "blacklistBanner": "Dieser Künstler ist ausgeblendet. Seine Musik wird nicht in der Suche, im Radio oder in Vorschlägen angezeigt.",
+    "search": {
+      "previousResult": "Vorheriges Ergebnis",
+      "nextResult": "Nächstes Ergebnis",
+      "close": "Suche schließen",
+      "searchInPage": "Auf dieser Seite suchen"
+    }
   },
   "sort": {
     "nameAZ": "Name (A-Z)",
@@ -406,7 +428,15 @@
       "addAll": "Alle Titel hinzufügen",
       "addNew": "Nur neue Titel hinzufügen",
       "adding": "Wird hinzugefügt..."
-    }
+    },
+    "suggestSongs": "Songs für diese Playlist vorschlagen",
+    "suggestionsLargePlaylist": "Diese Playlist hat viele Titel. Tippe auf die Schaltfläche, um Vorschläge zu generieren.",
+    "label": "Playlist",
+    "playCount": "Wiedergabeanzahl",
+    "playlists": "Playlists",
+    "folders": "Ordner",
+    "dragPlaylists": "Playlists zum Neuordnen ziehen",
+    "dropOntoFolder": "oder auf einen Ordner ablegen, um sie zu verschieben."
   },
   "favorites": {
     "title": "Favoriten",
@@ -461,7 +491,11 @@
     "moveDown": "Nach unten verschieben",
     "save": "Speichern",
     "saving": "Speichern...",
-    "cancel": "Abbrechen"
+    "cancel": "Abbrechen",
+    "footer": {
+      "viewCompilationsAndContent": "Um Kompilationen und andere Inhalte anzuzeigen",
+      "goToArtistPage": "gehe zur Seite von {artist}"
+    }
   },
   "placeholders": {
     "search": "Suchen...",
@@ -582,7 +616,9 @@
       "resampled": "Vom System resampled",
       "qualityAdjusted": "Qualität für Gerätekompatibilität angepasst — bit-perfekt, kein Resampling",
       "fix": "Aktiviere DAC Passthrough oder Exklusivmodus in den Einstellungen"
-    }
+    },
+    "stereo": "Stereo",
+    "mono": "Mono"
   },
   "actions": {
     "play": "Abspielen",
@@ -633,7 +669,27 @@
     "loading": "Lädt...",
     "loadMore": "Mehr laden",
     "collapse": "Seitenleiste einklappen",
-    "expand": "Seitenleiste ausklappen"
+    "expand": "Seitenleiste ausklappen",
+    "moreOptions": "Weitere Optionen",
+    "shareQobuz": "Teilen (Qobuz)",
+    "refreshOfflineCopy": "Offline-Kopie aktualisieren",
+    "albumCredits": "Album-Credits",
+    "startArtistRadio": "Künstler-Radio starten",
+    "radio": {
+      "startArtistRadio": "Künstler-Radio starten"
+    },
+    "previousAlbums": "Vorherige Alben",
+    "nextAlbums": "Nächste Alben",
+    "artistNetwork": "Künstler-Netzwerk",
+    "hide": {
+      "hideArtist": "Künstler ausblenden",
+      "hideArtistOptions": "Künstler-Ausblendoptionen",
+      "hiddenArtist": "Ausgeblendeter Künstler",
+      "showArtist": "Künstler anzeigen"
+    },
+    "newFolder": "Neuer Ordner",
+    "previousArtists": "Vorherige Künstler",
+    "nextArtists": "Nächste Künstler"
   },
   "settings": {
     "title": "Einstellungen",
@@ -1247,9 +1303,12 @@
     "v2NotInitialized": "Verbindung zu Qobuz konnte nicht hergestellt werden. Bitte starten Sie die App neu.",
     "connectionFailed": "Verbindung zu Qobuz™ fehlgeschlagen. Netzwerk prüfen und erneut versuchen.",
     "oauthButton": "Im Browser anmelden",
-    "oauthLoading": "Browser wird geöffnet..."
+    "oauthLoading": "Browser wird geöffnet...",
+    "activeSubscriptionRequired": "QBZ erfordert ein aktives Qobuz™-Abonnement. Ihre Anmeldedaten werden direkt an Qobuz™ gesendet.",
+    "APIUse": "Diese Anwendung verwendet die Qobuz-API, ist jedoch nicht von Qobuz zertifiziert."
   },
   "legal": {
+    "brandingLine": "Diese Anwendung verwendet die Qobuz-API, ist jedoch nicht von Qobuz™ zertifiziert.",
     "brandingLineSuffix": "",
     "tosAgreementPrefix": "Ich habe die",
     "tosLinkText": "Qobuz™-Nutzungsbedingungen",
@@ -1294,6 +1353,12 @@
     "hoursAgo": "vor {count}h",
     "daysAgo": "vor {count}d"
   },
+  "storage": {
+    "B": "B",
+    "KB": "KB",
+    "MB": "MB",
+    "GB": "GB"
+  },
   "empty": {
     "noAlbums": "Noch keine Alben",
     "noArtists": "Noch keine Künstler",
@@ -1331,6 +1396,8 @@
     "loadingAlbum": "Album wird geladen...",
     "loadingArtist": "Künstler wird geladen...",
     "loadingPlaylist": "Playlist wird geladen...",
+    "loadingPlaylists": "Playlists werden geladen...",
+    "loadingTracks": "Titel werden geladen...",
     "lookingUp": "{name} wird gesucht...",
     "failedLoadAlbum": "Album konnte nicht geladen werden",
     "failedLoadArtist": "Künstler konnte nicht geladen werden",

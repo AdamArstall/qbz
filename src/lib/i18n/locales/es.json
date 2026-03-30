@@ -262,7 +262,7 @@
     "localTrackIndicator": "Pista local - solo disponible en este dispositivo",
     "singleFileAlbumNotice": "Este álbum parece ser un archivo único que contiene el disco completo. La navegación por pistas individuales requiere que el servidor Plex divida el archivo (ej. mediante un escáner de cue sheet).",
     "plexTrackIndicator": "Pista de Plex - servida desde tu biblioteca local de Plex",
-    "refreshMetadata": "Refresh metadata",
+    "refreshMetadata": "Actualizar metadatos",
     "albumSettings": "Configuración del Álbum",
     "albumArtwork": "Portada del Álbum",
     "uploadCover": "Subir Portada"
@@ -659,7 +659,7 @@
       "fix": "Activa DAC Passthrough o Modo Exclusivo en Ajustes"
     },
     "stereo": "Estéreo",
-    "Mono": "Mono"
+    "mono": "Mono"
   },
   "actions": {
     "play": "Reproducir",
@@ -728,7 +728,7 @@
       "showArtist": "Mostrar artista"
     },
     "newFolder": "Nueva carpeta",
-    "previousArtists": "Artistas anterior",
+    "previousArtists": "Artistas anteriores",
     "nextArtists": "Próximos artistas"
   },
   "settings": {
