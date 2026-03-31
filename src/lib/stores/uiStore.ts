@@ -149,6 +149,9 @@ export function openFullScreen(): void {
 
 export function closeFullScreen(): void {
   isFullScreenOpen = false;
+  getCurrentWindow().isFullscreen().then(fs => {
+    if (fs) getCurrentWindow().setFullscreen(false);
+  });
   notifyListeners();
 }
 
