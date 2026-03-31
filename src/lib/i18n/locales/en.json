@@ -1253,7 +1253,7 @@
       "logsTitle": "Application Logs",
       "tabTerminal": "Terminal",
       "tabConsole": "Console",
-      "uploadLogs": "Upload to dpaste.org",
+      "uploadLogs": "Upload to paste.rs",
       "uploadTab": "Upload {tab}",
       "uploadSuccess": "Log URL copied to clipboard",
       "uploadError": "Failed to upload logs",

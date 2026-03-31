@@ -1253,7 +1253,7 @@
       "logsTitle": "Logs de la Aplicación",
       "tabTerminal": "Terminal",
       "tabConsole": "Consola",
-      "uploadLogs": "Subir a dpaste.org",
+      "uploadLogs": "Subir a paste.rs",
       "uploadTab": "Subir {tab}",
       "uploadSuccess": "URL del log copiada al portapapeles",
       "uploadError": "Error al subir los logs",

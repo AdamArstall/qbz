@@ -1246,7 +1246,7 @@
       "logsTitle": "Logs do Aplicativo",
       "tabTerminal": "Terminal",
       "tabConsole": "Console",
-      "uploadLogs": "Enviar para dpaste.org",
+      "uploadLogs": "Enviar para paste.rs",
       "uploadTab": "Enviar {tab}",
       "uploadSuccess": "URL do log copiada para a área de transferência",
       "uploadError": "Falha ao enviar logs",

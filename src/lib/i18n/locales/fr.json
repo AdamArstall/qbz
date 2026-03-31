@@ -1206,7 +1206,7 @@
       "logsTitle": "Logs de l'application",
       "tabTerminal": "Terminal",
       "tabConsole": "Console",
-      "uploadLogs": "Téléverser sur dpaste.org",
+      "uploadLogs": "Téléverser sur paste.rs",
       "uploadTab": "Téléverser {tab}",
       "uploadSuccess": "URL du log copiée dans le presse-papiers",
       "uploadError": "Échec du téléversement des logs",

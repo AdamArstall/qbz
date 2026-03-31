@@ -79,12 +79,9 @@ pub async fn upload_logs_to_paste(content: String) -> Result<String, String> {
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
     let response = client
-        .post("https://dpaste.org/api/")
-        .form(&[
-            ("content", content.as_str()),
-            ("format", "url"),
-            ("expires", "1296000"), // 15 days
-        ])
+        .post("https://paste.rs/")
+        .header("Content-Type", "text/plain")
+        .body(content)
         .send()
         .await
         .map_err(|e| format!("Failed to upload logs: {}", e))?;
