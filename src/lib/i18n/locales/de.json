@@ -1181,7 +1181,7 @@
       "logsTitle": "Anwendungs-Logs",
       "tabTerminal": "Terminal",
       "tabConsole": "Konsole",
-      "uploadLogs": "Zu 0x0.st hochladen",
+      "uploadLogs": "Zu dpaste.org hochladen",
       "uploadTab": "{tab} hochladen",
       "uploadSuccess": "Log-URL in Zwischenablage kopiert",
       "uploadError": "Fehler beim Hochladen der Logs",
