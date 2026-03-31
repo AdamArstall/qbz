@@ -301,6 +301,14 @@
     selectedTrackIds = new Set();
   }
 
+  async function handleBulkMakeOffline() {
+    for (const id of selectedTrackIds) {
+      invoke('v2_cache_favorite_track', { trackId: id }).catch(() => {});
+    }
+    trackSelectMode = false;
+    selectedTrackIds = new Set();
+  }
+
   let albumViewMode = $state<'grid' | 'list'>('grid');
   type AlbumGroupMode = 'alpha' | 'artist';
   let albumGroupMode = $state<AlbumGroupMode>('alpha');
@@ -1724,6 +1732,7 @@
           onPlayNext={handleBulkPlayNext}
           onPlayLater={handleBulkPlayLater}
           onAddToPlaylist={handleBulkAddToPlaylist}
+          onMakeOffline={handleBulkMakeOffline}
           onRemoveFavorites={handleBulkRemoveFavorites}
           onClearSelection={() => { selectedTrackIds = new Set(); }}
         />
