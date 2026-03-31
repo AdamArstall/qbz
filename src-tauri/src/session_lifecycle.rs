@@ -346,7 +346,7 @@ pub async fn activate_offline_session(app: &tauri::AppHandle) -> Result<(), Stri
     let offline_user_id = UserDataPaths::load_last_user_id().unwrap_or(0);
     log::info!(
         "[SessionLifecycle] Activating offline session (user_id={}{})",
-        offline_user_id,
+        crate::log_sanitize::mask_id(offline_user_id),
         if offline_user_id == 0 { " — no previous session" } else { "" }
     );
 

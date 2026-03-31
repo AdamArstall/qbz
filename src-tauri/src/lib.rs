@@ -31,6 +31,7 @@ pub mod image_cache;
 pub mod lastfm;
 pub mod library;
 pub mod listenbrainz;
+pub mod log_sanitize;
 pub mod logging;
 pub mod lyrics;
 pub mod media_controls;
