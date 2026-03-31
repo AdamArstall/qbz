@@ -57,10 +57,10 @@ fn resolve_location(
             .map(|t| t.eq_ignore_ascii_case("subdivision"))
             .unwrap_or(false);
 
-        // For birth/formation location, derive country from the country code
-        // (not from area, which represents where the artist is currently active)
-        let country_name = country.map(|c| country_code_to_name(c));
-
+        // MB's "country" field is where the artist is active (not where born).
+        // When we have a city-level begin_area, display only the city name
+        // to avoid incorrect country attribution (e.g., Zimmer: born Frankfurt,
+        // but country=US because he works in the US).
         let precision = if is_city {
             LocationPrecision::City
         } else if is_subdivision {
@@ -69,18 +69,12 @@ fn resolve_location(
             LocationPrecision::City // best guess
         };
 
-        let display = if let Some(ref cn) = country_name {
-            format!("{}, {}", ba.name, cn)
-        } else {
-            ba.name.clone()
-        };
-
         return Some(ArtistLocation {
             city: Some(ba.name.clone()),
             area_id: Some(ba.id.clone()),
-            country: country_name,
+            country: country.map(|c| country_code_to_name(c)),
             country_code: cc,
-            display_name: display,
+            display_name: ba.name.clone(),
             precision,
         });
     }
