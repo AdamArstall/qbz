@@ -90,11 +90,11 @@
 
   function formatTypeLabel(): string {
     const raw = (format || '').toLowerCase();
-    if (raw.includes('flac')) return 'FLAC (Free Lossless Audio Codec)';
-    if (raw.includes('mp3')) return 'MP3';
-    if (raw.includes('aac')) return 'AAC';
-    if (raw.includes('opus')) return 'Opus';
-    if (raw.includes('alac')) return 'ALAC';
+    if (raw.includes('flac')) return $t('fileFormat.flac');
+    if (raw.includes('mp3')) return $t('fileFormat.mp3');
+    if (raw.includes('aac')) return $t('fileFormat.aac');
+    if (raw.includes('opus')) return $t('fileFormat.opus');
+    if (raw.includes('alac')) return $t('fileFormat.alac');
     return 'Audio Stream';
   }
 
