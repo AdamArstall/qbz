@@ -113,7 +113,7 @@
         </button>
       {/if}
 
-      <button class="clear-btn" onclick={onClearSelection} title="Clear selection">
+      <button class="clear-btn" onclick={onClearSelection} title={ $t('actions.clearSelection') }>
         <X size={16} />
       </button>
     </div>
