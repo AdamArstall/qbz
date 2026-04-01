@@ -4516,15 +4516,16 @@
       <Toggle enabled={purchasesEnabled} onchange={handlePurchasesToggle} />
     </div>
 
-    <!-- System Tray subsection -->
-    <h4 class="subsection-title">{$t('settings.appearance.tray.title')}</h4>
+    <!-- System Tray / Menu Bar subsection -->
+    <h4 class="subsection-title">{$t(document.documentElement.classList.contains('macos') ? 'settings.appearance.tray.titleMacos' : 'settings.appearance.tray.title')}</h4>
     <div class="setting-row">
       <div class="setting-info">
-        <span class="setting-label">{$t('settings.appearance.tray.enableTray')}</span>
-        <span class="setting-desc">{$t('settings.appearance.tray.enableTrayDesc')}</span>
+        <span class="setting-label">{$t(document.documentElement.classList.contains('macos') ? 'settings.appearance.tray.enableTrayMacos' : 'settings.appearance.tray.enableTray')}</span>
+        <span class="setting-desc">{$t(document.documentElement.classList.contains('macos') ? 'settings.appearance.tray.enableTrayDescMacos' : 'settings.appearance.tray.enableTrayDesc')}</span>
       </div>
       <Toggle enabled={enableTray} onchange={(v) => handleEnableTrayChange(v)} />
     </div>
+    {#if !document.documentElement.classList.contains('macos')}
     <div class="setting-row">
       <div class="setting-info">
         <span class="setting-label">{$t('settings.appearance.tray.minimizeToTray')}</span>
@@ -4539,6 +4540,7 @@
       </div>
       <Toggle enabled={closeToTray} onchange={(v) => handleCloseToTrayChange(v)} disabled={!enableTray} />
     </div>
+    {/if}
 
     <!-- Immersive subsection -->
     <h4 class="subsection-title">{$t('settings.appearance.immersive.title')}</h4>
