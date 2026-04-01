@@ -1076,13 +1076,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "coreaudio-rs"
+version = "0.14.0"
+source = "git+https://github.com/afonsojramos/coreaudio-rs.git?branch=feat%2Fdevice-helpers#ce3fec9bce0b43ece78bb8801c87be9889e5710e"
+dependencies = [
+ "bitflags 2.11.0",
+ "libc",
+ "objc2-audio-toolbox",
+ "objc2-core-audio",
+ "objc2-core-audio-types",
+ "objc2-core-foundation",
+]
+
+[[package]]
 name = "cpal"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b1f9c7312f19fc2fa12fd7acaf38de54e8320ba10d1a02dcbe21038def51ccb"
 dependencies = [
  "alsa 0.10.0",
- "coreaudio-rs",
+ "coreaudio-rs 0.13.0",
  "dasp_sample",
  "jni",
  "js-sys",
@@ -4494,6 +4507,7 @@ version = "0.1.0"
 dependencies = [
  "alsa 0.9.1",
  "async-trait",
+ "coreaudio-rs 0.14.0",
  "dirs 5.0.1",
  "ebur128",
  "log",
