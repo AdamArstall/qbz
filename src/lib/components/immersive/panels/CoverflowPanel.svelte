@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from 'svelte-i18n';
   import QualityBadge from '$lib/components/QualityBadge.svelte';
   import { cachedSrc } from '$lib/actions/cachedImage';
 
@@ -143,7 +144,7 @@
           <span class="bar"></span>
           <span class="bar"></span>
         </div>
-        <span>Now Playing</span>
+        <span>{$t('player.nowPlaying')}</span>
       </div>
     {/if}
     <div class="track-title-row">
