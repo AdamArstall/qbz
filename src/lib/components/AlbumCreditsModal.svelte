@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
-  import { locale } from 'svelte-i18n';
+  import { t, locale } from 'svelte-i18n';
   import { Play, ChevronDown, ChevronUp, LoaderCircle, X } from 'lucide-svelte';
   import type { AlbumCredits, QobuzAlbum, Performer, TrackCredits } from '$lib/types';
 
@@ -209,7 +209,7 @@
               <div class="album-meta">
                 {#if credits.album.label}
                   <p class="meta-row">
-                    <span class="meta-label">Released by</span>
+                    <span class="meta-label">{$t('album.releasedBy')}</span>
                     {#if credits.album.label_id && onLabelClick}
                       <button
                         class="label-link"
@@ -224,7 +224,7 @@
                       <span class="meta-value label-name">{credits.album.label}</span>
                     {/if}
                     {#if credits.album.release_date}
-                      <span class="meta-date">on {new Date(credits.album.release_date).toLocaleDateString($locale ? $locale : 'en-us', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                      <span class="meta-date">{$t('album.releasedOn')} {new Date(credits.album.release_date).toLocaleDateString($locale ? $locale : 'en-us', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
                     {/if}
                   </p>
                 {/if}
@@ -232,9 +232,9 @@
                 {#if credits.album.genre}
                   <p class="meta-row">
                     <span class="meta-value">{credits.album.genre}</span>
-                    <span class="meta-separator">-</span>
-                    <span class="meta-value">{credits.album.track_count} Tracks</span>
-                    <span class="meta-separator">-</span>
+                    <span class="meta-separator">&middot;</span>
+                    <span class="meta-value">{credits.album.track_count} {$t('album.tracks')}</span>
+                    <span class="meta-separator">&middot;</span>
                     <span class="meta-value">{credits.album.duration}</span>
                   </p>
                 {/if}
