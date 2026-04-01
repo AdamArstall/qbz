@@ -35,7 +35,7 @@
       parts.push(`${track.maximum_sampling_rate}kHz`);
     }
     if (parts.length === 0) {
-      return track.hires_streamable ? 'Hi-Res' : 'Lossless';
+      return track.hires_streamable ? $t('quality.hiRes') : $t('quality.lossless');
     }
     return parts.join(' / ');
   }
