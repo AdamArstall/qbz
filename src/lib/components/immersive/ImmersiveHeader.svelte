@@ -379,7 +379,7 @@
       </div>
 
       <!-- Default icon (window) -->
-      <button class="window-trigger" title="Window Controls">
+      <button class="window-trigger" title="{ $t('player.windowControls') }">
         <img src="/window.svg" alt="Window" class="window-icon" />
       </button>
     </div>
