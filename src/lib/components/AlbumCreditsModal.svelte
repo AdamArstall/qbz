@@ -176,7 +176,7 @@
       {#if loading}
         <div class="loading-state">
           <LoaderCircle size={32} class="spinner" />
-          <span>Loading credits...</span>
+          <span>{ $t('toast.loadingCredits') }</span>
         </div>
       {:else if error}
         <div class="error-state">
@@ -190,7 +190,7 @@
             <h2 class="album-title">{credits.album.title}</h2>
             <span class="album-artist">{credits.album.artist}</span>
           </div>
-          <button class="close-btn" onclick={onClose} aria-label="Close">
+          <button class="close-btn" onclick={onClose} aria-label={ $t('actions.close') }>
             <X size={18} />
           </button>
         </div>
@@ -264,7 +264,7 @@
                   class:active={activeTab === 'credits'}
                   onclick={() => activeTab = 'credits'}
                 >
-                  Credits
+                  { $t('player.credits') }
                 </button>
                 <button
                   class="tab-btn"
