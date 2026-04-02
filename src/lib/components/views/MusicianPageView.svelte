@@ -92,7 +92,7 @@
 <div class="musician-page">
   <!-- Header -->
   <header class="page-header">
-    <button class="back-btn" onclick={onBack} title="Go back">
+    <button class="back-btn" onclick={onBack} title={ $t('actions.back') }>
       <ArrowLeft size={20} />
     </button>
 
