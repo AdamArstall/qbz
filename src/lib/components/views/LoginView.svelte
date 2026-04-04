@@ -2,7 +2,6 @@
   import { invoke } from '@tauri-apps/api/core';
   import TitleBar from '../TitleBar.svelte';
   import { t } from '$lib/i18n';
-  import { setManualOffline } from '$lib/stores/offlineStore';
   import { qobuzTosAccepted, loadTosAcceptance, setTosAcceptance } from '$lib/stores/qobuzLegalStore';
   import { get } from 'svelte/store';
 
@@ -20,10 +19,6 @@
 
   let { onLoginSuccess, onStartOffline }: Props = $props();
 
-  let email = $state('');
-  let password = $state('');
-  let rememberMe = $state(true);
-  let isLoading = $state(false);
   let isOAuthLoading = $state(false);
   let isInitializing = $state(true);
   let initStatus = $state('Connecting to Qobuz™...');
@@ -177,107 +172,6 @@
     initializeClient();
   }
 
-  async function handleLogin(e: Event) {
-    e.preventDefault();
-
-    if (!get(qobuzTosAccepted)) {
-      error = $t('legal.tosRequiredToLogin');
-      return;
-    }
-
-    // Persist ToS acceptance synchronously before login so the backend
-    // gate in require_tos_accepted() always sees the correct value.
-    // The subscribe-handler write is fire-and-forget and can lose the
-    // race if the user clicks Login immediately after checking the box.
-    try {
-      await setTosAcceptance(true);
-    } catch {
-      // If persistence fails the backend will reject login — error shown below
-    }
-
-    if (!email || !password) {
-      error = 'Please enter email and password';
-      return;
-    }
-
-    isLoading = true;
-    error = null;
-
-    try {
-      // Persist ToS acceptance synchronously before backend login so the
-      // backend gate (require_tos_accepted) always sees the correct value.
-      // The subscribe-handler write is fire-and-forget and can lose the race.
-      await setTosAcceptance(true);
-    } catch {
-      // If persistence fails the backend will reject the login below
-    }
-
-    try {
-      // V2 manual login with blocking CoreBridge auth
-      const response = await invoke<{
-        success: boolean;
-        user_name?: string;
-        user_id?: number;
-        subscription?: string;
-        subscription_valid_until?: string | null;
-        error?: string;
-        error_code?: string;
-      }>('v2_manual_login', { email, password });
-
-      console.log('[LoginView] v2_manual_login: success =', response.success);
-
-      if (response.success) {
-        // Validate that we have a valid user_id - NEVER allow 0
-        if (!response.user_id || response.user_id === 0) {
-          console.error('[LoginView] v2_manual_login returned success but invalid user_id');
-          error = $t('auth.v2AuthFailed');
-          isLoading = false;
-          return;
-        }
-
-        // Persist credential preference explicitly on each successful login
-        if (rememberMe) {
-          try {
-            await invoke('v2_save_credentials', { email, password });
-            console.log('Credentials saved to keyring');
-          } catch (saveErr) {
-            console.error('Failed to save credentials:', saveErr);
-            // Don't block login if saving fails
-          }
-        } else {
-          try {
-            await invoke('v2_clear_saved_credentials');
-            console.log('Saved credentials cleared (remember me disabled)');
-          } catch (clearErr) {
-            console.error('Failed to clear saved credentials:', clearErr);
-          }
-        }
-
-        onLoginSuccess({
-            userName: response.user_name || 'User',
-            userId: response.user_id,
-            subscription: response.subscription || 'Active',
-            subscriptionValidUntil: response.subscription_valid_until ?? null,
-          });
-      } else {
-        if (response.error_code === 'ineligible_user') {
-          error = $t('auth.ineligibleSubscription');
-        } else if (response.error_code === 'v2_auth_failed') {
-          error = $t('auth.v2AuthFailed');
-        } else if (response.error_code === 'v2_not_initialized') {
-          error = $t('auth.v2NotInitialized');
-        } else {
-          error = response.error || 'Login failed';
-        }
-      }
-    } catch (err) {
-      console.error('Login error:', err);
-      error = formatErrorMessage(err);
-    } finally {
-      isLoading = false;
-    }
-  }
-
   async function handleStartOffline() {
     try {
       // Delegate to parent — it handles the correct order:
@@ -387,41 +281,10 @@
       </div>
     {:else}
       <div class="login-body">
-        <form onsubmit={handleLogin}>
-          <div class="input-group">
-            <label for="email">{$t('auth.email')}</label>
-            <input
-              id="email"
-              type="email"
-              bind:value={email}
-              placeholder="your@email.com"
-              disabled={isLoading}
-              autocomplete="email"
-            />
-          </div>
-
-          <div class="input-group">
-            <label for="password">{$t('auth.password')}</label>
-            <input
-              id="password"
-              type="password"
-              bind:value={password}
-              placeholder="Password"
-              disabled={isLoading}
-              autocomplete="current-password"
-            />
-          </div>
-
-          <div class="remember-me">
-            <label>
-              <input type="checkbox" bind:checked={rememberMe} />
-              <span>{$t('auth.rememberMe')}</span>
-            </label>
-          </div>
-
+        <div class="login-actions">
           <div class="remember-me tos-remember">
             <label>
-              <input type="checkbox" bind:checked={$qobuzTosAccepted} disabled={isLoading} />
+              <input type="checkbox" bind:checked={$qobuzTosAccepted} disabled={isOAuthLoading} />
               <span>
                 {$t('legal.tosAgreementPrefix')}
                 <a href="https://www.qobuz.com/us-en/legal/terms" target="_blank" rel="noopener">
@@ -435,21 +298,10 @@
             <div class="error-message">{error}</div>
           {/if}
 
-          <button type="submit" class="login-btn" disabled={isLoading || isOAuthLoading || !$qobuzTosAccepted}>
-            {#if isLoading}
-              <div class="spinner small"></div>
-              <span>{$t('auth.loggingIn')}</span>
-            {:else}
-              <span>{$t('auth.loginButton')}</span>
-            {/if}
-          </button>
-
-          <div class="divider"><span>or</span></div>
-
           <button
             type="button"
             class="oauth-btn"
-            disabled={isLoading || isOAuthLoading || !$qobuzTosAccepted}
+            disabled={isOAuthLoading || !$qobuzTosAccepted}
             onclick={handleOAuthLogin}
           >
             {#if isOAuthLoading}
@@ -467,7 +319,7 @@
               </button>
             </small>
           </p>
-        </form>
+        </div>
 
         <div class="login-footer">
           <p class="footer-copy">
@@ -507,7 +359,7 @@
 	    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 	    display: flex;
 	    flex-direction: column;
-	    min-height: min(700px, 85vh);
+	    min-height: min(480px, 70vh);
 	    max-height: 90vh;
 	    overflow-y: auto;
 	  }
@@ -647,46 +499,10 @@
     color: var(--text-primary);
   }
 
-  form {
+  .login-actions {
     display: flex;
     flex-direction: column;
     gap: 20px;
-  }
-
-  .input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .input-group label {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--text-secondary);
-  }
-
-  .input-group input {
-    height: 48px;
-    padding: 0 16px;
-    background-color: var(--bg-tertiary);
-    border: 1px solid transparent;
-    border-radius: 8px;
-    font-size: 16px;
-    color: var(--text-primary);
-    outline: none;
-    transition: border-color 150ms ease;
-  }
-
-  .input-group input:focus {
-    border-color: var(--accent-primary);
-  }
-
-  .input-group input::placeholder {
-    color: var(--text-muted);
-  }
-
-  .input-group input:disabled {
-    opacity: 0.6;
   }
 
   .remember-me {
@@ -718,7 +534,7 @@
     font-size: 14px;
   }
 
-  .login-btn {
+  .oauth-btn {
     height: 48px;
     display: flex;
     align-items: center;
@@ -734,51 +550,8 @@
     transition: background-color 150ms ease;
   }
 
-  .login-btn:hover:not(:disabled) {
-    background-color: var(--accent-hover);
-  }
-
-  .login-btn:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-  }
-
-  .divider {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    color: var(--text-muted);
-    font-size: 12px;
-    margin: -4px 0;
-  }
-
-  .divider::before,
-  .divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background-color: var(--border-color, var(--bg-tertiary));
-  }
-
-  .oauth-btn {
-    height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    background-color: transparent;
-    color: var(--text-primary);
-    border: 1px solid var(--accent-primary);
-    border-radius: 8px;
-    font-size: 15px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 150ms ease, color 150ms ease;
-  }
-
   .oauth-btn:hover:not(:disabled) {
-    background-color: var(--accent-primary);
-    color: white;
+    background-color: var(--accent-hover);
   }
 
   .oauth-btn:disabled {
