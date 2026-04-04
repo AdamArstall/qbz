@@ -3977,6 +3977,7 @@
       <Toggle enabled={alsaHardwareVolume} onchange={handleAlsaHardwareVolumeChange} />
     </div>
     {/if}
+    {/if}
     <div class="setting-row">
       <div class="setting-info">
         <span class="setting-label">{$t('settings.audio.exclusiveMode')} <span class="help-tip" title={$t('settings.audio.exclusiveModeHelp')}>(?)</span></span>
@@ -3994,6 +3995,7 @@
     {#if dacPassthrough}
     <small class="setting-note">{$t('settings.audio.dacPassthroughNote')}</small>
     {/if}
+    {#if platform === 'linux'}
     {#if isFlatpak && selectedBackend === 'PipeWire' && dacPassthrough}
     <div class="flatpak-warning">
       <div class="warning-icon">⚠️</div>
