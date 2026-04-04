@@ -58,12 +58,6 @@
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }
-
-  const modalTitle = $derived(
-    release
-      ? $t('updates.whatsNew.whatsNewIn', { values: { version: release.version } }) + ` (${releaseDate})`
-      : $t('updates.whatsNew.whatsNew')
-  );
 </script>
 
 <div
@@ -77,7 +71,9 @@
   <Modal
     {isOpen}
     onClose={onClose}
-    title={modalTitle}
+    title={release
+      ? $t('updates.whatsNew.whatsNewIn', { values: { version: release.version } }) + ` (${releaseDate})`
+      : $t('updates.whatsNew.whatsNew')}
     maxWidth="910px"
   >
     {#if release}

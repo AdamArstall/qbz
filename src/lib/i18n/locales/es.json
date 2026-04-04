@@ -1266,7 +1266,7 @@
       "qobuzLinkHandlerError": "Error al actualizar el registro del manejador de enlaces.",
       "qconnectDeviceName": "Nombre del dispositivo",
       "qconnectDeviceNameDesc": "Nombre mostrado en Qobuz Connect",
-      "noProtocolDeviceFound": "No se encontraron dispositivos {protocolo}",
+      "noProtocolDeviceFound": "No se encontraron dispositivos {protocol}",
       "noProtocolDeviceFoundHint": "Asegúrese de que los dispositivos estén en la misma red"
     },
     "storage": {
@@ -2384,7 +2384,7 @@
     },
     "whatsNew": {
       "whatsNew": "Qué hay de nuevo",
-      "whatsNewIn": "Novedades de v${version}",
+      "whatsNewIn": "Novedades de v{version}",
       "releaseNotesNotAvailable": "Las notas de la versión no están disponibles.",
       "releaseNotesNotAvailableForVersion": "Las notas de la versión no están disponibles para esta versión."
     },

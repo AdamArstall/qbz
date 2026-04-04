@@ -1259,7 +1259,7 @@
       "plexStatusConnected": "Verbunden mit {server} (v{version}).",
       "plexStatusError": "Plex-Fehler: {error}",
       "plexStatusPlaying": "Spielt: {title}",
-      "noProtocolDeviceFound": "Keine {Protokoll}-Geräte gefunden",
+      "noProtocolDeviceFound": "Keine {protocol}-Geräte gefunden",
       "noProtocolDeviceFoundHint": "Stellen Sie sicher, dass sich die Geräte im selben Netzwerk befinden",
       "plexStatusPlayingDirect": "Direkte Wiedergabe von Plex: {title} ({rate} Hz / {bits}-bit, {contentType}).",
       "plexStatusPlayingFallback": "{title} wird abgespielt, aber die direkte Wiedergabe ist nicht bestätigt (Teil: {partKey}).",
@@ -2240,7 +2240,7 @@
     },
     "whatsNew": {
       "whatsNew": "Was ist neu",
-      "whatsNewIn": "Was ist neu in v${version}?",
+      "whatsNewIn": "Was ist neu in v{version}?",
       "releaseNotesNotAvailable": "Versionshinweise sind nicht verfügbar.",
       "releaseNotesNotAvailableForVersion": "Für diese Version sind keine Versionshinweise verfügbar."
     },

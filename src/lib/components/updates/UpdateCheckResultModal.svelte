@@ -20,7 +20,7 @@
       <p class="message">{$t('updates.newVersionAvailable', { values: { version: newVersion } })}</p>
     {:else}
       <p class="message">{$t('updates.noUpdatesFound')}</p>
-    {/if}²
+    {/if}
   </div>
 
   {#snippet footer()}

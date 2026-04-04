@@ -2381,7 +2381,7 @@
     },
     "whatsNew": {
       "whatsNew": "What's new",
-      "whatsNewIn": "What's new in v${version}",
+      "whatsNewIn": "What's new in v{version}",
       "releaseNotesNotAvailable": "Release notes are not available.",
       "releaseNotesNotAvailableForVersion": "Release notes are not available for this version."
     },

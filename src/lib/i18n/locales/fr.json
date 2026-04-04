@@ -2405,7 +2405,7 @@
       "releaseNotesNotAvailable": "Les notes de version ne sont pas disponibles.",
       "releaseNotesNotAvailableForVersion": "Les notes de version ne sont pas disponibles pour cette version.",
       "whatsNew": "Quoi de neuf",
-      "whatsNewIn": "Quoi de neuf dans v${version}"
+      "whatsNewIn": "Quoi de neuf dans v{version}"
     }
   },
   "musician": {

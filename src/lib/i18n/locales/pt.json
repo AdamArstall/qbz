@@ -2350,7 +2350,7 @@
     },
     "whatsNew": {
       "whatsNew": "O que há de novo",
-      "whatsNewIn": "O que há de novo em v${version}",
+      "whatsNewIn": "O que há de novo em v{version}",
       "releaseNotesNotAvailable": "As notas de versão não estão disponíveis.",
       "releaseNotesNotAvailableForVersion": "As notas de lançamento não estão disponíveis para esta versão."
     },
