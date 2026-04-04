@@ -3539,8 +3539,9 @@ dependencies = [
 
 [[package]]
 name = "notify-rust"
-version = "4.12.0"
-source = "git+https://github.com/afonsojramos/notify-rust?branch=feat%2Fmacos-image-path-support#c46803a015137402c761adbb7362f7e6624eb3ee"
+version = "4.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9612133a804b4bc753f9f806de73fc9730b7694eb1bada2dc252cce022638be8"
 dependencies = [
  "futures-lite",
  "log",
