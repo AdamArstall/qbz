@@ -50,6 +50,9 @@ pub struct AudioSettings {
     /// When true, force PipeWire clock.force-quantum alongside clock.force-rate for bit-perfect.
     /// Reset both to 0 on stop. PipeWire-only, requires dac_passthrough.
     pub pw_force_bitperfect: bool,
+    /// When true, skip `pactl set-default-sink` on stream creation.
+    /// Preserves external routing (JACK, qjackctl, Reaper).
+    pub skip_sink_switch: bool,
 }
 
 impl Default for AudioSettings {
@@ -72,6 +75,7 @@ impl Default for AudioSettings {
             normalization_target_lufs: -14.0, // Spotify/YouTube standard
             gapless_enabled: false, // Off by default — user opts in
             pw_force_bitperfect: false, // Off by default — experimental PipeWire feature
+            skip_sink_switch: false, // Off by default — only for JACK/DAW routing setups
         }
     }
 }
@@ -160,6 +164,10 @@ impl AudioSettingsStore {
             "ALTER TABLE audio_settings ADD COLUMN pw_force_bitperfect INTEGER DEFAULT 0",
             [],
         );
+        let _ = conn.execute(
+            "ALTER TABLE audio_settings ADD COLUMN skip_sink_switch INTEGER DEFAULT 0",
+            [],
+        );
 
         Ok(Self { conn })
     }
@@ -178,7 +186,7 @@ impl AudioSettingsStore {
     pub fn get_settings(&self) -> Result<AudioSettings, String> {
         self.conn
             .query_row(
-                "SELECT output_device, exclusive_mode, dac_passthrough, preferred_sample_rate, backend_type, alsa_plugin, alsa_hardware_volume, stream_first_track, stream_buffer_seconds, streaming_only, limit_quality_to_device, device_max_sample_rate, normalization_enabled, normalization_target_lufs, gapless_enabled, device_sample_rate_limits, pw_force_bitperfect FROM audio_settings WHERE id = 1",
+                "SELECT output_device, exclusive_mode, dac_passthrough, preferred_sample_rate, backend_type, alsa_plugin, alsa_hardware_volume, stream_first_track, stream_buffer_seconds, streaming_only, limit_quality_to_device, device_max_sample_rate, normalization_enabled, normalization_target_lufs, gapless_enabled, device_sample_rate_limits, pw_force_bitperfect, skip_sink_switch FROM audio_settings WHERE id = 1",
                 [],
                 |row| {
                     // Parse backend_type from JSON string
@@ -215,6 +223,7 @@ impl AudioSettingsStore {
                         normalization_target_lufs: row.get::<_, Option<f64>>(13)?.unwrap_or(-14.0) as f32,
                         gapless_enabled: row.get::<_, Option<i64>>(14)?.unwrap_or(0) != 0,
                         pw_force_bitperfect: row.get::<_, Option<i64>>(16)?.unwrap_or(0) != 0,
+                        skip_sink_switch: row.get::<_, Option<i64>>(17)?.unwrap_or(0) != 0,
                     })
                 },
             )

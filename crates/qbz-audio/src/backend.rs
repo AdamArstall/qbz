@@ -128,6 +128,10 @@ pub struct BackendConfig {
 
     /// When true, force PipeWire clock.force-quantum for bit-perfect playback
     pub pw_force_bitperfect: bool,
+
+    /// When true, skip `pactl set-default-sink` on stream creation.
+    /// Preserves external routing (JACK, qjackctl, Reaper).
+    pub skip_sink_switch: bool,
 }
 
 /// Result type for backend operations

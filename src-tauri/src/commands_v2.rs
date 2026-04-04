@@ -167,6 +167,7 @@ pub(crate) fn convert_to_qbz_audio_settings(settings: &AudioSettings) -> qbz_aud
         normalization_target_lufs: settings.normalization_target_lufs,
         gapless_enabled: settings.gapless_enabled,
         pw_force_bitperfect: settings.pw_force_bitperfect,
+        skip_sink_switch: settings.skip_sink_switch,
     }
 }
 
@@ -8835,6 +8836,49 @@ pub async fn v2_set_audio_gapless_enabled(
     }; // guard dropped here before .await
 
     // Sync to player immediately so gapless takes effect without restart
+    if let Some(fresh) = fresh_settings {
+        if let Some(b) = bridge.try_get().await {
+            let _ = b
+                .player()
+                .reload_settings(convert_to_qbz_audio_settings(&fresh));
+        }
+    }
+    Ok(())
+}
+
+/// Set skip sink switch (V2) — preserves JACK/qjackctl routing
+#[tauri::command]
+pub async fn v2_set_audio_skip_sink_switch(
+    enabled: bool,
+    state: State<'_, AudioSettingsState>,
+    bridge: State<'_, CoreBridgeState>,
+) -> Result<(), RuntimeError> {
+    log::info!("[V2] set_audio_skip_sink_switch: {}", enabled);
+    let fresh_settings = {
+        let guard = state
+            .store
+            .lock()
+            .map_err(|e| RuntimeError::Internal(format!("Lock error: {}", e)))?;
+        let store = guard
+            .as_ref()
+            .ok_or(RuntimeError::UserSessionNotActivated)?;
+
+        // Constraint: cannot enable when dac_passthrough is on
+        if enabled {
+            let current = store.get_settings().map_err(RuntimeError::Internal)?;
+            if current.dac_passthrough {
+                return Err(RuntimeError::Internal(
+                    "Cannot enable skip sink switch while DAC passthrough is active".to_string(),
+                ));
+            }
+        }
+
+        store
+            .set_skip_sink_switch(enabled)
+            .map_err(RuntimeError::Internal)?;
+        store.get_settings().ok()
+    };
+
     if let Some(fresh) = fresh_settings {
         if let Some(b) = bridge.try_get().await {
             let _ = b
