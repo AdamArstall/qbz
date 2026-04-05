@@ -36,7 +36,7 @@ RDEPEND="
 "
 
 BDEPEND="
-	virtual/rust
+	dev-lang/rust
 	net-libs/nodejs[npm]
 	llvm-core/clang
 	virtual/pkgconfig
