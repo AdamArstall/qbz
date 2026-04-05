@@ -1043,136 +1043,11 @@ pub async fn runtime_bootstrap(
         return Ok(status);
     }
 
-    // Step 3: Check for saved credentials and attempt auto-login.
-    // NOTE: user_id hint is optional; credentials are the source of truth.
-    // This keeps bootstrap robust even if last_user_id is missing/corrupt.
-    let creds = crate::credentials::load_qobuz_credentials();
-    let last_user_id_hint = crate::user_data::UserDataPaths::load_last_user_id();
-
-    if let Ok(Some(creds)) = creds {
-        if last_user_id_hint.is_some() {
-            log::info!("[Runtime] Found saved credentials, attempting auto-login");
-        } else {
-            log::info!("[Runtime] Found saved credentials, attempting auto-login (no hint)");
-        }
-
-        // Login to legacy client
-        let client = app_state.client.read().await;
-        match client.login(&creds.email, &creds.password).await {
-            Ok(session) => {
-                log::info!("[Runtime] Legacy auth successful");
-                manager.set_legacy_auth(true, Some(session.user_id)).await;
-                let _ = app.emit(
-                    "runtime:event",
-                    RuntimeEvent::AuthChanged {
-                        logged_in: true,
-                        user_id: Some(session.user_id),
-                    },
-                );
-
-                // Step 4: Wait for CoreBridge init, then authenticate V2 - REQUIRED per ADR
-                let cb_start = std::time::Instant::now();
-                let cb_timeout = std::time::Duration::from_secs(30);
-                let cb_poll = std::time::Duration::from_millis(100);
-
-                loop {
-                    if core_bridge.try_get().await.is_some() {
-                        break;
-                    }
-                    let elapsed = cb_start.elapsed();
-                    if elapsed > cb_timeout {
-                        log::error!("[Runtime] CoreBridge not available after 30s");
-                        manager.set_bootstrap_in_progress(false).await;
-                        return Err(RuntimeError::V2NotInitialized);
-                    }
-                    if elapsed.as_secs() % 5 == 0 && elapsed.as_millis() % 5000 < 150 {
-                        log::info!(
-                            "[Runtime] Waiting for CoreBridge... ({:.0}s)",
-                            elapsed.as_secs_f64()
-                        );
-                    }
-                    tokio::time::sleep(cb_poll).await;
-                }
-                log::info!("[Runtime] CoreBridge ready after {:?}", cb_start.elapsed());
-
-                if let Some(bridge) = core_bridge.try_get().await {
-                    match bridge.login(&creds.email, &creds.password).await {
-                        Ok(_) => {
-                            log::info!("[Runtime] CoreBridge auth successful");
-                            manager.set_corebridge_auth(true).await;
-                        }
-                        Err(e) => {
-                            log::error!("[Runtime] CoreBridge auth failed: {}", e);
-                            let _ = app.emit(
-                                "runtime:event",
-                                RuntimeEvent::CoreBridgeAuthFailed {
-                                    error: e.to_string(),
-                                },
-                            );
-                            manager.set_bootstrap_in_progress(false).await;
-                            return Err(RuntimeError::V2AuthFailed(e));
-                        }
-                    }
-                } else {
-                    log::error!("[Runtime] CoreBridge disappeared after ready check");
-                    manager.set_bootstrap_in_progress(false).await;
-                    return Err(RuntimeError::V2NotInitialized);
-                }
-
-                // Step 5: Activate per-user session - REQUIRED (FATAL if fails)
-                // This initializes all per-user stores and sets runtime state
-                // Session activation failure is FATAL per parity with v2_auto_login/v2_manual_login
-                if let Err(e) =
-                    crate::session_lifecycle::activate_session(&app, session.user_id).await
-                {
-                    log::error!("[Runtime] Session activation failed: {}", e);
-                    // Rollback auth state since session is not usable
-                    manager.set_legacy_auth(false, None).await;
-                    manager.set_corebridge_auth(false).await;
-                    let reason = DegradedReason::SessionActivationFailed(e.clone());
-                    manager.set_degraded(reason.clone()).await;
-                    manager.set_bootstrap_in_progress(false).await;
-                    let _ = app.emit(
-                        "runtime:event",
-                        RuntimeEvent::RuntimeDegraded {
-                            reason: reason.clone(),
-                        },
-                    );
-                    return Err(RuntimeError::RuntimeDegraded(reason));
-                }
-
-                // Step 6: Optionally sync audio settings after session activation.
-                // Only runs if user has enabled sync_audio_on_startup (opt-in).
-                // Useful when Player::new() may hold stale settings (e.g., Flatpak updates).
-                let should_sync = audio_settings
-                    .store
-                    .lock()
-                    .ok()
-                    .and_then(|g| g.as_ref().and_then(|s| s.get_settings().ok()))
-                    .map(|s| s.sync_audio_on_startup)
-                    .unwrap_or(false);
-
-                if should_sync {
-                    if let Some(bridge) = core_bridge.try_get().await {
-                        let player = bridge.player();
-                        if let Ok(guard) = audio_settings.store.lock() {
-                            if let Some(store) = guard.as_ref() {
-                                if let Ok(fresh) = store.get_settings() {
-                                    log::info!("[Runtime] Syncing audio settings to player (sync_audio_on_startup=true)");
-                                    let _ = player
-                                        .reload_settings(convert_to_qbz_audio_settings(&fresh));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                log::warn!("[Runtime] Auto-login failed: {}", e);
-                // Not a fatal error - user can login manually
-            }
-        }
-    } else if let Ok(Some(oauth_token)) = crate::credentials::load_oauth_token() {
+    // Step 3: Attempt auto-login via saved OAuth token.
+    // Basic auth (email/password) is no longer supported by Qobuz — any saved
+    // credentials from older versions are ignored. Users will see the login
+    // screen and authenticate via OAuth.
+    if let Ok(Some(oauth_token)) = crate::credentials::load_oauth_token() {
         // No email/password credentials but there IS a saved OAuth token.
         // Try to restore the session by calling /user/login with the stored token.
         log::info!("[Runtime] No email/password credentials, trying saved OAuth token...");
@@ -1368,304 +1243,54 @@ pub async fn v2_get_user_info(
         }))
 }
 
-/// Auto-login using saved credentials (Phase 2 of runtime initialization)
+/// Auto-login using saved credentials.
 ///
-/// This command:
-/// 1. Loads saved credentials from keyring
-/// 2. Authenticates with legacy client
-/// 3. Authenticates with CoreBridge/V2 (BLOCKING - required per ADR)
-/// 4. Updates RuntimeManager state
-///
-/// V2 auth is REQUIRED - if it fails, the whole login fails.
-/// ToS acceptance is REQUIRED - checked in backend before any auth attempt.
+/// Basic auth (email/password) is no longer supported by Qobuz.
+/// This command now always returns no_credentials. Session restore
+/// is handled by the OAuth token path in runtime_bootstrap.
 #[tauri::command]
 pub async fn v2_auto_login(
-    app: tauri::AppHandle,
-    runtime: State<'_, RuntimeManagerState>,
-    app_state: State<'_, AppState>,
-    core_bridge: State<'_, CoreBridgeState>,
-    legal_state: State<'_, LegalSettingsState>,
+    _app: tauri::AppHandle,
+    _runtime: State<'_, RuntimeManagerState>,
+    _app_state: State<'_, AppState>,
+    _core_bridge: State<'_, CoreBridgeState>,
+    _legal_state: State<'_, LegalSettingsState>,
 ) -> Result<V2LoginResponse, String> {
-    let manager = runtime.manager();
-
-    log::info!("[V2] v2_auto_login starting...");
-
-    // Load saved credentials
-    let creds = match crate::credentials::load_qobuz_credentials() {
-        Ok(Some(c)) => c,
-        Ok(None) => {
-            return Ok(V2LoginResponse {
-                success: false,
-                user_name: None,
-                user_id: None,
-                subscription: None,
-                subscription_valid_until: None,
-                error: Some("No saved credentials".to_string()),
-                error_code: Some("no_credentials".to_string()),
-            });
-        }
-        Err(e) => {
-            return Ok(V2LoginResponse {
-                success: false,
-                user_name: None,
-                user_id: None,
-                subscription: None,
-                subscription_valid_until: None,
-                error: Some(e),
-                error_code: Some("credentials_error".to_string()),
-            });
-        }
-    };
-
-    // Legacy auth
-    let client = app_state.client.read().await;
-    let session = match client.login(&creds.email, &creds.password).await {
-        Ok(s) => s,
-        Err(e) => {
-            let error_code = if matches!(e, crate::api::error::ApiError::IneligibleUser) {
-                Some("ineligible_user".to_string())
-            } else {
-                None
-            };
-            return Ok(V2LoginResponse {
-                success: false,
-                user_name: None,
-                user_id: None,
-                subscription: None,
-                subscription_valid_until: None,
-                error: Some(e.to_string()),
-                error_code,
-            });
-        }
-    };
-    drop(client);
-
-    log::info!("[V2] Legacy auth successful");
-    manager.set_legacy_auth(true, Some(session.user_id)).await;
-    let _ = app.emit(
-        "runtime:event",
-        RuntimeEvent::AuthChanged {
-            logged_in: true,
-            user_id: Some(session.user_id),
-        },
-    );
-
-    // V2 CoreBridge auth - REQUIRED per ADR Runtime Session Contract
-    if let Some(bridge) = core_bridge.try_get().await {
-        match bridge.login(&creds.email, &creds.password).await {
-            Ok(_) => {
-                log::info!("[V2] CoreBridge auth successful");
-                manager.set_corebridge_auth(true).await;
-            }
-            Err(e) => {
-                log::error!("[V2] CoreBridge auth failed: {}", e);
-                rollback_auth_state(&manager, &app).await;
-                let _ = app.emit(
-                    "runtime:event",
-                    RuntimeEvent::CoreBridgeAuthFailed {
-                        error: e.to_string(),
-                    },
-                );
-                // V2 auth failed - return failure per ADR
-                return Ok(V2LoginResponse {
-                    success: false,
-                    user_name: Some(session.display_name),
-                    user_id: Some(session.user_id),
-                    subscription: Some(session.subscription_label),
-                    subscription_valid_until: session.subscription_valid_until,
-                    error: Some(format!("V2 authentication failed: {}", e)),
-                    error_code: Some("v2_auth_failed".to_string()),
-                });
-            }
-        }
-    } else {
-        log::error!("[V2] CoreBridge not initialized - cannot complete auth");
-        rollback_auth_state(&manager, &app).await;
-        return Ok(V2LoginResponse {
-            success: false,
-            user_name: Some(session.display_name),
-            user_id: Some(session.user_id),
-            subscription: Some(session.subscription_label),
-            subscription_valid_until: session.subscription_valid_until,
-            error: Some("V2 CoreBridge not initialized".to_string()),
-            error_code: Some("v2_not_initialized".to_string()),
-        });
-    }
-
-    // Activate per-user session (initializes all per-user stores)
-    // This is REQUIRED - without it, user has auth but no stores, causing UserSessionNotActivated errors
-    if let Err(e) = crate::session_lifecycle::activate_session(&app, session.user_id).await {
-        log::error!("[V2] Session activation failed: {}", e);
-        rollback_auth_state(&manager, &app).await;
-        return Ok(V2LoginResponse {
-            success: false,
-            user_name: Some(session.display_name.clone()),
-            user_id: Some(session.user_id),
-            subscription: Some(session.subscription_label.clone()),
-            subscription_valid_until: session.subscription_valid_until.clone(),
-            error: Some(format!("Session activation failed: {}", e)),
-            error_code: Some("session_activation_failed".to_string()),
-        });
-    }
-
-    // Persist ToS acceptance now that login succeeded.
-    // The frontend checkbox already gated the UI; we store the value so
-    // subsequent bootstrap auto-logins pass without requiring the user to
-    // re-accept (e.g. after a factory reset that wiped the DB).
-    accept_tos_best_effort(&legal_state);
-
-    // Emit ready event
-    let _ = app.emit(
-        "runtime:event",
-        RuntimeEvent::RuntimeReady {
-            user_id: session.user_id,
-        },
-    );
-
+    log::info!("[V2] v2_auto_login: basic auth no longer supported, returning no_credentials");
     Ok(V2LoginResponse {
-        success: true,
-        user_name: Some(session.display_name),
-        user_id: Some(session.user_id),
-        subscription: Some(session.subscription_label),
-        subscription_valid_until: session.subscription_valid_until,
-        error: None,
-        error_code: None,
+        success: false,
+        user_name: None,
+        user_id: None,
+        subscription: None,
+        subscription_valid_until: None,
+        error: Some("Basic auth no longer supported. Please use OAuth.".to_string()),
+        error_code: Some("no_credentials".to_string()),
     })
 }
 
-/// Manual login with email and password (V2 - with blocking CoreBridge auth)
+/// Manual login with email and password.
 ///
-/// This command:
-/// 1. Authenticates with legacy client
-/// 2. Authenticates with CoreBridge/V2 (BLOCKING - required per ADR)
-/// 3. Updates RuntimeManager state
-///
-/// V2 auth is REQUIRED - if it fails, the whole login fails.
-/// ToS acceptance is REQUIRED - checked in backend before any auth attempt.
+/// Basic auth is no longer supported by Qobuz. This command is kept for
+/// backward compatibility but always returns an error directing users to OAuth.
 #[tauri::command]
 pub async fn v2_manual_login(
-    email: String,
-    password: String,
-    app: tauri::AppHandle,
-    runtime: State<'_, RuntimeManagerState>,
-    app_state: State<'_, AppState>,
-    core_bridge: State<'_, CoreBridgeState>,
-    legal_state: State<'_, LegalSettingsState>,
+    _email: String,
+    _password: String,
+    _app: tauri::AppHandle,
+    _runtime: State<'_, RuntimeManagerState>,
+    _app_state: State<'_, AppState>,
+    _core_bridge: State<'_, CoreBridgeState>,
+    _legal_state: State<'_, LegalSettingsState>,
 ) -> Result<V2LoginResponse, String> {
-    let manager = runtime.manager();
-
-    log::info!("[V2] v2_manual_login starting...");
-
-    // Legacy auth
-    let client = app_state.client.read().await;
-    let session = match client.login(&email, &password).await {
-        Ok(s) => s,
-        Err(e) => {
-            let error_code = if matches!(e, crate::api::error::ApiError::IneligibleUser) {
-                Some("ineligible_user".to_string())
-            } else {
-                None
-            };
-            return Ok(V2LoginResponse {
-                success: false,
-                user_name: None,
-                user_id: None,
-                subscription: None,
-                subscription_valid_until: None,
-                error: Some(e.to_string()),
-                error_code,
-            });
-        }
-    };
-    drop(client);
-
-    log::info!("[V2] Legacy auth successful");
-    manager.set_legacy_auth(true, Some(session.user_id)).await;
-    let _ = app.emit(
-        "runtime:event",
-        RuntimeEvent::AuthChanged {
-            logged_in: true,
-            user_id: Some(session.user_id),
-        },
-    );
-
-    // V2 CoreBridge auth - REQUIRED per ADR Runtime Session Contract
-    if let Some(bridge) = core_bridge.try_get().await {
-        match bridge.login(&email, &password).await {
-            Ok(_) => {
-                log::info!("[V2] CoreBridge auth successful");
-                manager.set_corebridge_auth(true).await;
-            }
-            Err(e) => {
-                log::error!("[V2] CoreBridge auth failed: {}", e);
-                rollback_auth_state(&manager, &app).await;
-                let _ = app.emit(
-                    "runtime:event",
-                    RuntimeEvent::CoreBridgeAuthFailed {
-                        error: e.to_string(),
-                    },
-                );
-                // V2 auth failed - return failure per ADR
-                return Ok(V2LoginResponse {
-                    success: false,
-                    user_name: Some(session.display_name),
-                    user_id: Some(session.user_id),
-                    subscription: Some(session.subscription_label),
-                    subscription_valid_until: session.subscription_valid_until,
-                    error: Some(format!("V2 authentication failed: {}", e)),
-                    error_code: Some("v2_auth_failed".to_string()),
-                });
-            }
-        }
-    } else {
-        log::error!("[V2] CoreBridge not initialized - cannot complete auth");
-        rollback_auth_state(&manager, &app).await;
-        return Ok(V2LoginResponse {
-            success: false,
-            user_name: Some(session.display_name),
-            user_id: Some(session.user_id),
-            subscription: Some(session.subscription_label),
-            subscription_valid_until: session.subscription_valid_until,
-            error: Some("V2 CoreBridge not initialized".to_string()),
-            error_code: Some("v2_not_initialized".to_string()),
-        });
-    }
-
-    // Activate per-user session (initializes all per-user stores)
-    // This is REQUIRED - without it, user has auth but no stores, causing UserSessionNotActivated errors
-    if let Err(e) = crate::session_lifecycle::activate_session(&app, session.user_id).await {
-        log::error!("[V2] Session activation failed: {}", e);
-        rollback_auth_state(&manager, &app).await;
-        return Ok(V2LoginResponse {
-            success: false,
-            user_name: Some(session.display_name.clone()),
-            user_id: Some(session.user_id),
-            subscription: Some(session.subscription_label.clone()),
-            subscription_valid_until: session.subscription_valid_until.clone(),
-            error: Some(format!("Session activation failed: {}", e)),
-            error_code: Some("session_activation_failed".to_string()),
-        });
-    }
-
-    // Persist ToS acceptance now that login succeeded.
-    accept_tos_best_effort(&legal_state);
-
-    // Emit ready event
-    let _ = app.emit(
-        "runtime:event",
-        RuntimeEvent::RuntimeReady {
-            user_id: session.user_id,
-        },
-    );
-
+    log::info!("[V2] v2_manual_login: basic auth no longer supported");
     Ok(V2LoginResponse {
-        success: true,
-        user_name: Some(session.display_name),
-        user_id: Some(session.user_id),
-        subscription: Some(session.subscription_label),
-        subscription_valid_until: session.subscription_valid_until,
-        error: None,
-        error_code: None,
+        success: false,
+        user_name: None,
+        user_id: None,
+        subscription: None,
+        subscription_valid_until: None,
+        error: Some("Basic auth no longer supported. Please use OAuth.".to_string()),
+        error_code: Some("basic_auth_deprecated".to_string()),
     })
 }
 
