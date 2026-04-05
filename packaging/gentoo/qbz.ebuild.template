@@ -28,7 +28,7 @@ RDEPEND="
 	x11-libs/libxkbcommon
 	gnome-base/librsvg:2
 	pipewire? (
-		media-video/pipewire[alsa-plugin]
+		media-video/pipewire[pipewire-alsa]
 	)
 	pulseaudio? (
 		media-libs/libpulse
@@ -38,7 +38,7 @@ RDEPEND="
 BDEPEND="
 	virtual/rust
 	net-libs/nodejs[npm]
-	sys-devel/clang
+	llvm-core/clang
 	virtual/pkgconfig
 "
 
