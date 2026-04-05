@@ -36,7 +36,7 @@
   /* Floating variant (default) */
   .artwork-wrapper {
     width: 100%;
-    max-width: min(500px, 38vw, 58vh);
+    max-width: min(42vw, 60vh);
     aspect-ratio: 1;
     border-radius: 12px;
     overflow: hidden;
@@ -55,7 +55,7 @@
   .vinyl-disc {
     position: relative;
     width: 100%;
-    max-width: min(500px, 38vw, 58vh);
+    max-width: min(42vw, 60vh);
     aspect-ratio: 1;
     border-radius: 50%;
     background: linear-gradient(
@@ -104,14 +104,14 @@
   @media (max-width: 1200px) {
     .artwork-wrapper,
     .vinyl-disc {
-      max-width: min(420px, 35vw, 50vh);
+      max-width: min(38vw, 52vh);
     }
   }
 
   @media (max-width: 900px) {
     .artwork-wrapper,
     .vinyl-disc {
-      max-width: min(320px, 60vw, 32vh);
+      max-width: min(55vw, 32vh);
     }
   }
 </style>

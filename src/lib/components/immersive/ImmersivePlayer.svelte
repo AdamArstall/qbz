@@ -903,7 +903,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 20px;
+    gap: 16px;
+    padding: 0 clamp(20px, 3vw, 50px);
   }
 
   .split-track-info {

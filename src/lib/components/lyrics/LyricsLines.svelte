@@ -206,6 +206,15 @@
     border-radius: 3px;
   }
 
+  /* Immersive mode: hide scrollbar but keep scrolling */
+  .lyrics-lines.immersive {
+    scrollbar-width: none;
+  }
+
+  .lyrics-lines.immersive::-webkit-scrollbar {
+    display: none;
+  }
+
   .lyrics-spacer {
     min-height: 40vh;
     flex-shrink: 0;
@@ -247,11 +256,11 @@
   }
 
   .lyrics-lines.immersive .lyrics-line {
-    font-family: 'Oswald', var(--font-sans), sans-serif;
+    font-family: 'Montserrat', var(--font-sans), sans-serif;
     font-size: clamp(24px, 2.6vw, 34px);
-    font-weight: 400;
-    line-height: 1.3;
-    letter-spacing: 0.02em;
+    font-weight: 500;
+    line-height: 1.35;
+    letter-spacing: 0.01em;
     /* Text shadow for contrast against any background */
     text-shadow:
       0 1px 2px rgba(0, 0, 0, 0.5),
@@ -278,7 +287,7 @@
 
   .lyrics-lines.immersive .lyrics-line.active {
     font-size: clamp(28px, 3.2vw, 42px);
-    font-weight: 600;
+    font-weight: 700;
     color: #ffffff !important;
     opacity: 1;
   }
