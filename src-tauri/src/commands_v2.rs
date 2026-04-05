@@ -1687,7 +1687,6 @@ pub async fn v2_start_oauth_login(
     core_bridge: State<'_, CoreBridgeState>,
     legal_state: State<'_, LegalSettingsState>,
 ) -> Result<V2LoginResponse, String> {
-    let manager = runtime.manager();
     log::info!("[V2] v2_start_oauth_login starting...");
 
     // Get app_id from initialized client
@@ -1859,12 +1858,31 @@ pub async fn v2_start_oauth_login(
         }
     };
 
-    log::info!("[V2] OAuth code received, exchanging for session...");
+    finalize_oauth_login(&code, &app, &runtime, &app_state, &core_bridge, &legal_state).await
+}
 
-    // Exchange code for UserSession via legacy client
+/// Complete the OAuth login flow after obtaining an authorization code.
+///
+/// Frontend-agnostic: does not depend on how the code was obtained (WebView,
+/// system browser, manual paste, etc.). Suitable for GUI, TUI, and headless.
+///
+/// Steps: exchange code → establish session → inject into CoreBridge →
+/// activate per-user data → persist token.
+async fn finalize_oauth_login(
+    code: &str,
+    app: &tauri::AppHandle,
+    runtime: &State<'_, RuntimeManagerState>,
+    app_state: &State<'_, AppState>,
+    core_bridge: &State<'_, CoreBridgeState>,
+    legal_state: &State<'_, LegalSettingsState>,
+) -> Result<V2LoginResponse, String> {
+    let manager = runtime.manager();
+    log::info!("[OAuth] Exchanging authorization code for session...");
+
+    // Exchange code for UserSession
     let session = {
         let client = app_state.client.read().await;
-        match client.login_with_oauth_code(&code).await {
+        match client.login_with_oauth_code(code).await {
             Ok(s) => s,
             Err(e) => {
                 return Ok(V2LoginResponse {
@@ -1880,7 +1898,7 @@ pub async fn v2_start_oauth_login(
         }
     };
 
-    log::info!("[V2] OAuth session established");
+    log::info!("[OAuth] Session established, activating...");
     manager.set_legacy_auth(true, Some(session.user_id)).await;
     let _ = app.emit(
         "runtime:event",
@@ -1891,13 +1909,12 @@ pub async fn v2_start_oauth_login(
     );
 
     // Convert api::models::UserSession → qbz_models::UserSession for CoreBridge
-    // Both types are structurally identical; serde round-trip is safe.
     let core_session: UserSession =
         match serde_json::to_value(&session).and_then(serde_json::from_value) {
             Ok(s) => s,
             Err(e) => {
-                log::error!("[V2] Failed to convert session for CoreBridge: {}", e);
-                rollback_auth_state(&manager, &app).await;
+                log::error!("[OAuth] Failed to convert session for CoreBridge: {}", e);
+                rollback_auth_state(&manager, app).await;
                 return Ok(V2LoginResponse {
                     success: false,
                     user_name: None,
@@ -1910,16 +1927,16 @@ pub async fn v2_start_oauth_login(
             }
         };
 
-    // CoreBridge auth — inject session directly (OAuth has no email/password)
+    // Inject session into CoreBridge
     if let Some(bridge) = core_bridge.try_get().await {
         match bridge.login_with_session(core_session).await {
             Ok(_) => {
-                log::info!("[V2] CoreBridge session injected for OAuth user");
+                log::info!("[OAuth] CoreBridge session injected");
                 manager.set_corebridge_auth(true).await;
             }
             Err(e) => {
-                log::error!("[V2] CoreBridge session injection failed: {}", e);
-                rollback_auth_state(&manager, &app).await;
+                log::error!("[OAuth] CoreBridge session injection failed: {}", e);
+                rollback_auth_state(&manager, app).await;
                 let _ = app.emit(
                     "runtime:event",
                     RuntimeEvent::CoreBridgeAuthFailed {
@@ -1938,8 +1955,8 @@ pub async fn v2_start_oauth_login(
             }
         }
     } else {
-        log::error!("[V2] CoreBridge not initialized for OAuth login");
-        rollback_auth_state(&manager, &app).await;
+        log::error!("[OAuth] CoreBridge not initialized");
+        rollback_auth_state(&manager, app).await;
         return Ok(V2LoginResponse {
             success: false,
             user_name: Some(session.display_name),
@@ -1951,10 +1968,10 @@ pub async fn v2_start_oauth_login(
         });
     }
 
-    // Activate per-user session (same as manual login)
-    if let Err(e) = crate::session_lifecycle::activate_session(&app, session.user_id).await {
-        log::error!("[V2] Session activation failed after OAuth: {}", e);
-        rollback_auth_state(&manager, &app).await;
+    // Activate per-user session
+    if let Err(e) = crate::session_lifecycle::activate_session(app, session.user_id).await {
+        log::error!("[OAuth] Session activation failed: {}", e);
+        rollback_auth_state(&manager, app).await;
         return Ok(V2LoginResponse {
             success: false,
             user_name: Some(session.display_name.clone()),
@@ -1966,14 +1983,12 @@ pub async fn v2_start_oauth_login(
         });
     }
 
-    // Persist the OAuth token so bootstrap can restore the session on next launch.
-    // Non-fatal: if saving fails, the user just has to re-login via OAuth.
+    // Persist OAuth token for session restore on next launch
     if let Err(e) = crate::credentials::save_oauth_token(&session.user_auth_token) {
-        log::warn!("[V2] Failed to persist OAuth token: {}", e);
+        log::warn!("[OAuth] Failed to persist token: {}", e);
     }
 
-    // Persist ToS acceptance now that login succeeded.
-    accept_tos_best_effort(&legal_state);
+    accept_tos_best_effort(legal_state);
 
     let _ = app.emit(
         "runtime:event",
@@ -1991,6 +2006,130 @@ pub async fn v2_start_oauth_login(
         error: None,
         error_code: None,
     })
+}
+
+/// OAuth login via the user's system browser.
+///
+/// Spawns a temporary local HTTP server, opens the system browser to the Qobuz
+/// OAuth page with a localhost redirect, captures the authorization code when
+/// Qobuz redirects back, then completes the login via `finalize_oauth_login`.
+#[tauri::command]
+pub async fn v2_start_system_browser_oauth(
+    app: tauri::AppHandle,
+    runtime: State<'_, RuntimeManagerState>,
+    app_state: State<'_, AppState>,
+    core_bridge: State<'_, CoreBridgeState>,
+    legal_state: State<'_, LegalSettingsState>,
+) -> Result<V2LoginResponse, String> {
+    log::info!("[V2] System browser OAuth starting...");
+
+    // Get app_id from initialized client
+    let app_id = {
+        let client = app_state.client.read().await;
+        client.app_id().await.map_err(|e| e.to_string())?
+    };
+
+    // Bind to a random available port
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .map_err(|e| format!("Failed to bind local OAuth listener: {}", e))?;
+    let port = listener
+        .local_addr()
+        .map_err(|e| format!("Failed to get listener address: {}", e))?
+        .port();
+
+    let oauth_url = format!(
+        "https://www.qobuz.com/signin/oauth?ext_app_id={}&redirect_url={}",
+        app_id,
+        urlencoding::encode(&format!("http://localhost:{}", port)),
+    );
+
+    // Channel for the authorization code
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(1);
+
+    // Local HTTP handler: serves a success page and forwards the code
+    let oauth_handler = axum::Router::new().route(
+        "/",
+        axum::routing::get(move |axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>| {
+            let tx = tx.clone();
+            async move {
+                if let Some(code) = params.get("code_autorisation").or_else(|| params.get("code")) {
+                    let _ = tx.send(code.clone()).await;
+                    axum::response::Html(
+                        "<html><body style=\"font-family:system-ui;text-align:center;padding:60px\">\
+                         <h2>Login successful</h2>\
+                         <p>You can close this tab and return to QBZ.</p>\
+                         </body></html>"
+                    )
+                } else {
+                    axum::response::Html(
+                        "<html><body style=\"font-family:system-ui;text-align:center;padding:60px\">\
+                         <h2>Login failed</h2>\
+                         <p>No authorization code received. Please try again.</p>\
+                         </body></html>"
+                    )
+                }
+            }
+        }),
+    );
+
+    // Spawn the server in the background
+    let server_handle = tokio::spawn(async move {
+        axum::serve(listener, oauth_handler).await.ok();
+    });
+
+    // Open the user's default browser
+    log::info!("[OAuth] Opening system browser to Qobuz login (port {})", port);
+    if let Err(e) = open::that(&oauth_url) {
+        log::error!("[OAuth] Failed to open system browser: {}", e);
+        server_handle.abort();
+        return Ok(V2LoginResponse {
+            success: false,
+            user_name: None,
+            user_id: None,
+            subscription: None,
+            subscription_valid_until: None,
+            error: Some(format!("Failed to open browser: {}", e)),
+            error_code: Some("browser_open_failed".to_string()),
+        });
+    }
+
+    // Wait up to 5 minutes for the redirect
+    let code = tokio::time::timeout(
+        std::time::Duration::from_secs(300),
+        rx.recv(),
+    )
+    .await;
+
+    server_handle.abort();
+
+    let code = match code {
+        Ok(Some(c)) => c,
+        Ok(None) => {
+            return Ok(V2LoginResponse {
+                success: false,
+                user_name: None,
+                user_id: None,
+                subscription: None,
+                subscription_valid_until: None,
+                error: Some("OAuth login cancelled".to_string()),
+                error_code: Some("oauth_cancelled".to_string()),
+            });
+        }
+        Err(_) => {
+            return Ok(V2LoginResponse {
+                success: false,
+                user_name: None,
+                user_id: None,
+                subscription: None,
+                subscription_valid_until: None,
+                error: Some("OAuth login timed out after 5 minutes".to_string()),
+                error_code: Some("oauth_timeout".to_string()),
+            });
+        }
+    };
+
+    finalize_oauth_login(&code, &app, &runtime, &app_state, &core_bridge, &legal_state).await
 }
 
 // ==================== Prefetch (V2) ====================
